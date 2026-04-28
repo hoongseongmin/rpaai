@@ -1,0 +1,20 @@
+# RPA/AI 자동화 프로젝트 의존성
+
+# 파일 처리
+openpyxl>=3.1.0
+pandas>=2.0.0
+python-magic>=0.4.27
+
+# 이미지 처리
+Pillow>=10.0.0
+
+# RPA 자동화
+pyautogui>=0.9.54
+pynput>=1.7.6
+
+# AI 연동 (필요시)
+# openai>=1.0.0
+
+# 유틸리티
+python-dotenv>=1.0.0
+pathlib>=1.0.0

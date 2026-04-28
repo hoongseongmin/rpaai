@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPA/AI 자동화 플랫폼</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <h1>🤖 RPA/AI 자동화 플랫폼</h1>
+            <nav class="nav">
+                <a href="/" class="nav-link active">파일 처리</a>
+                <a href="/rpa" class="nav-link">RPA 관리</a>
+                <a href="/ai" class="nav-link">AI 연동</a>
+                <a href="/tasks" class="nav-link">작업 기록</a>
+            </nav>
+        </header>
+
+        <!-- 메인 콘텐츠 -->
+        <main class="main">
+            <!-- 파일 업로드 섹션 -->
+            <section class="card">
+                <h2>📁 파일 업로드</h2>
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="file-drop-area" id="dropArea">
+                        <span class="file-msg">파일을 드래그하거나 클릭하여 선택</span>
+                        <input type="file" id="fileInput" name="file" multiple accept="*/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">업로드</button>
+                </form>
+                <div id="uploadResult" class="result"></div>
+            </section>
+
+            <!-- 파일 처리 섹션 -->
+            <section class="card">
+                <h2>⚙️ 파일 처리</h2>
+                <form id="processForm">
+                    <div class="form-group">
+                        <label>처리 작업:</label>
+                        <select id="operation" name="operation">
+                            <option value="convert">포맷 변환</option>
+                            <option value="resize">이미지 리사이즈</option>
+                            <option value="merge">파일 병합</option>
+                        </select>
+                    </div>
+
+                    <!-- 포맷 변환 옵션 -->
+                    <div id="convertOptions" class="options">
+                        <div class="form-group">
+                            <label>변환 포맷:</label>
+                            <select name="format">
+                                <option value="png">PNG</option>
+                                <option value="jpg">JPG</option>
+                                <option value="webp">WebP</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 리사이즈 옵션 -->
+                    <div id="resizeOptions" class="options" style="display:none;">
+                        <div class="form-group">
+                            <label>너비:</label>
+                            <input type="number" name="width" value="800">
+                        </div>
+                        <div class="form-group">
+                            <label>높이:</label>
+                            <input type="number" name="height" value="600">
+                        </div>
+                    </div>
+
+                    <!-- 병합 옵션 -->
+                    <div id="mergeOptions" class="options" style="display:none;">
+                        <div class="form-group">
+                            <label>병합 방식:</label>
+                            <select name="merge_type">
+                                <option value="csv">CSV 병합</option>
+                                <option value="txt">텍스트 연결</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>파일 선택:</label>
+                        <div id="fileList" class="file-list"></div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">처리 실행</button>
+                </form>
+                <div id="processResult" class="result"></div>
+            </section>
+
+            <!-- 업로드된 파일 목록 -->
+            <section class="card">
+                <h2>📂 업로드된 파일</h2>
+                <div id="uploadedFiles" class="file-grid"></div>
+            </section>
+        </main>
+
+        <!-- 푸터 -->
+        <footer class="footer">
+            <p>RPA/AI 자동화 플랫폼 v1.0.0</p>
+        </footer>
+    </div>
+
+    <script>
+        // 파일 드래그 앤 드롭
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+
+        dropArea.addEventListener('click', () => fileInput.click());
+
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('dragover');
+        });
+
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.classList.remove('dragover');
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('dragover');
+            fileInput.files = e.dataTransfer.files;
+            updateFileList();
+        });
+
+        fileInput.addEventListener('change', updateFileList);
+
+        function updateFileList() {
+            const files = fileInput.files;
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '';
+            
+            for (let i = 0; i < files.length; i++) {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.textContent = files[i].name + ' (' + formatSize(files[i].size) + ')';
+                fileList.appendChild(fileItem);
+            }
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // 작업 선택 시 옵션 표시
+        document.getElementById('operation').addEventListener('change', function() {
+            const operation = this.value;
+            document.getElementById('convertOptions').style.display = operation === 'convert' ? 'block' : 'none';
+            document.getElementById('resizeOptions').style.display = operation === 'resize' ? 'block' : 'none';
+            document.getElementById('mergeOptions').style.display = operation === 'merge' ? 'block' : 'none';
+        });
+
+        // 파일 업로드
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const resultDiv = document.getElementById('uploadResult');
+            resultDiv.innerHTML = '업로드 중...';
+
+            try {
+                const response = await fetch('/files/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                resultDiv.innerHTML = `<div class="success">${data.message}</div>`;
+                loadUploadedFiles();
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        });
+
+        // 파일 처리
+        document.getElementById('processForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const resultDiv = document.getElementById('processResult');
+            resultDiv.innerHTML = '처리 중...';
+
+            try {
+                const response = await fetch('/files/process', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    let html = '<div class="success">처리 완료!</div>';
+                    html += '<div class="download-links">';
+                    data.results.forEach(r => {
+                        const filename = r.output.split(/[/\\]/).pop();
+                        html += `<a href="/files/download/${filename}" class="btn btn-success">${filename} 다운로드</a>`;
+                    });
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = `<div class="success">${data.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        });
+
+        // 업로드된 파일 목록 로드
+        async function loadUploadedFiles() {
+            try {
+                const response = await fetch('/files');
+                const data = await response.json();
+                
+                const fileGrid = document.getElementById('uploadedFiles');
+                if (data.files && data.files.length > 0) {
+                    fileGrid.innerHTML = data.files.map(f => `
+                        <div class="file-card">
+                            <div class="file-icon">📄</div>
+                            <div class="file-name">${f.name}</div>
+                            <div class="file-size">${formatSize(f.size)}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    fileGrid.innerHTML = '<p>업로드된 파일이 없습니다.</p>';
+                }
+            } catch (error) {
+                console.error('파일 목록 로드 오류:', error);
+            }
+        }
+
+        // 초기 로드
+        loadUploadedFiles();
+    </script>
+</body>
+</html>
