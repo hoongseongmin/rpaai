@@ -1,0 +1,34 @@
+{
+  "customers": {
+    "한화손해보험": {
+      "name": "한화손해보험",
+      "inspection_template": "정기점검서_{year}년{month}월.pdf",
+      "status_file": "운영현황_한화손해보험.xlsx",
+      "match_field": "순번",
+      "comparison_fields": ["검수항목", "결과"]
+    },
+    "현대해상": {
+      "name": "현대해상",
+      "inspection_template": "검수_{year}년{month}월.pdf",
+      "status_file": "운영현황_현대해상.xlsx",
+      "match_field": "no",
+      "comparison_fields": ["항목", "상태"]
+    },
+    "koreapost": {
+      "name": "우정사업본부",
+      "customer_id": "koreapost",
+      "status_file": "운영현황_우정사업본부.xlsx"
+    }
+  },
+  "paths": {
+    "download": "C:/Users/User/Downloads",
+    "base_output": "C:/Users/User/Desktop/rpaai/outputs",
+    "data_folder": "C:/Users/User/Desktop/rpaai/data",
+    "log_folder": "C:/Users/User/Desktop/rpaai/logs"
+  },
+  "mail": {
+    "smtp_server": "smtp.example.com",
+    "smtp_port": 587,
+    "use_tls": true
+  }
+}

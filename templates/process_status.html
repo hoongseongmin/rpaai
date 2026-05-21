@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RPA/AI 자동화 플랫폼</title>
+    <title>RPA/AI 자동화 플랫폼 - 처리/미처리 현황</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
         .summary-box {
@@ -86,7 +86,7 @@
 <body>
     <div class="container">
         <!-- 헤더 -->
-        {% set active_page = 'index' %}
+        {% set active_page = 'process_status' %}
         {% include 'header.html' %}
 
         <!-- 메인 콘텐츠 -->
@@ -114,20 +114,37 @@
 
             <!-- 파일 처리 섹션 -->
             <section class="card">
-                <h2>⚙️ 파일 처리</h2>
+                <h2>⚙️ 처리/미처리현황 편집</h2>
                 <form id="processForm">
                     <!-- 작업 유형 고정 -->
-                    <input type="hidden" id="operation" name="operation" value="compare">
+                    <input type="hidden" id="operation" name="operation" value="process_status">
 
-                    <!-- 비교 옵션 -->
-                    <div id="compareOptions" class="options" style="display:block;">
+                    <!-- 처리/미처리 현황 옵션 -->
+                    <div id="statusOptions" class="options" style="display:block;">
                         <div class="form-group">
-                            <label>기존(이전) 파일:</label>
-                            <select id="oldFileSelect" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);"></select>
+                            <p style="color: var(--text-light); margin-bottom: 10px;">※ '처리미처리현황' 엑셀 파일을 위 목록에서 체크한 후 실행하세요.</p>
+                            <div style="display: flex; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <label>시작일:</label>
+                                    <input type="date" id="status_start_date" name="start_date" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                                </div>
+                                <div style="flex: 1;">
+                                    <label>종료일:</label>
+                                    <input type="date" id="status_end_date" name="end_date" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                                </div>
+                            </div>
+                            <div id="holidayPreviewContainer" style="margin-top: 15px; display: none; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 15px;">
+                                <h5 style="margin-top: 0; margin-bottom: 10px; color: var(--primary);">📅 필터링 대상 휴일 목록 미리보기</h5>
+                                <div id="holidayPreviewList" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 150px; overflow-y: auto;"></div>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>신규(현재) 파일:</label>
-                            <select id="newFileSelect" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);"></select>
+                    </div>
+
+                    <!-- 일반 파일 선택 (비교 외 작업용) -->
+                    <div class="form-group" id="genericFileSelectGroup" style="display:block;">
+                        <label>처리할 파일 선택 (서버에 업로드된 파일):</label>
+                        <div id="serverFileList" class="file-list" style="border: 1px solid var(--border); padding: 10px; border-radius: 6px; max-height: 150px; overflow-y: auto;">
+                            <p style="color: var(--text-light); font-size: 0.9em;">업로드된 파일이 없습니다.</p>
                         </div>
                     </div>
 
@@ -212,11 +229,49 @@
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
+        // 💡 휴일 미리보기 업데이트 함수
+        async function updateHolidayPreview() {
+            const startDate = document.getElementById('status_start_date').value;
+            const endDate = document.getElementById('status_end_date').value;
+            const container = document.getElementById('holidayPreviewContainer');
+            const listDiv = document.getElementById('holidayPreviewList');
+            
+            if (startDate && endDate) {
+                if (startDate > endDate) {
+                    listDiv.innerHTML = '<span style="color: #ef4444;">시작일이 종료일보다 클 수 없습니다.</span>';
+                    container.style.display = 'block';
+                    return;
+                }
+                
+                container.style.display = 'block';
+                listDiv.innerHTML = '<span style="color: #888;">달력을 불러오는 중...</span>';
+                
+                try {
+                    const response = await fetch(`/files/holidays?start_date=${startDate}&end_date=${endDate}`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.holidays.length > 0) {
+                        listDiv.innerHTML = data.holidays.map(h => {
+                            const color = h.is_weekend ? '#64748b' : '#ef4444'; // 주말:회색, 공휴일:빨간색
+                            const bg = h.is_weekend ? '#f8fafc' : '#fef2f2';
+                            const border = h.is_weekend ? '#cbd5e1' : '#fca5a5';
+                            return `<span style="padding: 4px 8px; border-radius: 4px; background: ${bg}; color: ${color}; border: 1px solid ${border}; font-size: 0.85em; font-weight: bold;">${h.date} (${h.name})</span>`;
+                        }).join('');
+                    } else if (data.success) {
+                        listDiv.innerHTML = '<span style="color: #888;">선택한 기간 내에 필터링될 주말이나 공휴일이 없습니다.</span>';
+                    } else { listDiv.innerHTML = `<span style="color: #ef4444;">오류: ${data.detail}</span>`; }
+                } catch (e) { listDiv.innerHTML = `<span style="color: #ef4444;">통신 오류가 발생했습니다.</span>`; }
+            } else { container.style.display = 'none'; }
+        }
+        document.getElementById('status_start_date').addEventListener('change', updateHolidayPreview);
+        document.getElementById('status_end_date').addEventListener('change', updateHolidayPreview);
+
         // 파일 업로드
         document.getElementById('uploadForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const formData = new FormData(this);
+            formData.append('task_type', 'status');
             const resultDiv = document.getElementById('uploadResult');
             resultDiv.innerHTML = '업로드 중...';
 
@@ -251,23 +306,25 @@
                 return;
             }
 
-            const oldFile = document.getElementById('oldFileSelect').value;
-            const newFile = document.getElementById('newFileSelect').value;
-            
-            if (!oldFile || !newFile) {
-                alert('비교할 기존 파일과 신규 파일을 모두 선택해주세요.');
+            const selectedCheckboxes = document.querySelectorAll('#serverFileList input[name="filenames"]:checked');
+            if (selectedCheckboxes.length === 0) {
+                alert('위의 목록에서 처리할 파일을 먼저 체크하여 선택해주세요!');
                 return;
             }
-            if (oldFile === newFile) {
-                alert('기존 파일과 신규 파일이 같습니다. 서로 다른 파일을 선택해주세요.');
-                return;
-            }
-            
-            formData.append('filenames', oldFile);
-            formData.append('filenames', newFile);
+            selectedCheckboxes.forEach(cb => {
+                formData.append('filenames', cb.value);
+            });
 
             // 옵션 수집
             let optionsObj = {};
+            if (operation === 'process_status') {
+                optionsObj.start_date = document.getElementById('status_start_date').value;
+                optionsObj.end_date = document.getElementById('status_end_date').value;
+                if (!optionsObj.start_date || !optionsObj.end_date) {
+                    alert('처리할 기간의 시작일과 종료일을 모두 지정해주세요.');
+                    return;
+                }
+            }
 
             const resultDiv = document.getElementById('processResult');
             resultDiv.innerHTML = '처리 중...';
@@ -294,50 +351,8 @@
                         let previewHtml = '';
 
                         // 비교 작업일 경우 미리보기 생성
-                        if (r.summary) {
-                            const summary = r.summary;
-                            const totalChanges = summary.added_count + summary.deleted_count + summary.modified_count;
-                            
-                            previewHtml += `<div class="summary-box">`;
-                            previewHtml += `<h4>처리 결과 요약 (총 ${totalChanges}건)</h4>`;
-                            previewHtml += `<p style="margin-bottom: 20px;"><strong>신규추가: ${summary.added_count}건</strong> | <strong>삭제됨: ${summary.deleted_count}건</strong> | <strong>내용변경: ${summary.modified_count}건</strong></p>`;
-
-                            // 검색창 및 검색 버튼 추가 (Enter 키 지원)
-                            previewHtml += `<div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                                                <input type="text" class="search-input" placeholder="🔍 결과 내 검색 (예: SITEID, 모델명, 변경내용 등 입력)" onkeypress="if(event.key === 'Enter') { event.preventDefault(); filterPreviewTables(this.nextElementSibling); }" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; outline: none;">
-                                                <button type="button" class="btn btn-primary" onclick="filterPreviewTables(this)">검색</button>
-                                            </div>`;
-
-                            const cols = summary.columns || [];
-                            let theadHtml = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
-
-                            // 신규추가 테이블
-                            if (summary.added_rows && summary.added_rows.length > 0) {
-                                previewHtml += `<h5>신규추가 항목 (${summary.added_count}건)</h5><div class="preview-table-container"><table><thead>${theadHtml}</thead><tbody>`;
-                                summary.added_rows.forEach(row => {
-                                    previewHtml += `<tr onclick="this.classList.toggle('selected-row')">` + cols.map(c => `<td>${row[c] !== null && row[c] !== undefined ? row[c] : ''}</td>`).join('') + '</tr>';
-                                });
-                                previewHtml += `</tbody></table></div>`;
-                            }
-
-                            // 삭제됨 테이블
-                            if (summary.deleted_rows && summary.deleted_rows.length > 0) {
-                                previewHtml += `<h5>삭제된 항목 (${summary.deleted_count}건)</h5><div class="preview-table-container"><table><thead>${theadHtml}</thead><tbody>`;
-                                summary.deleted_rows.forEach(row => {
-                                    previewHtml += `<tr onclick="this.classList.toggle('selected-row')">` + cols.map(c => `<td>${row[c] !== null && row[c] !== undefined ? row[c] : ''}</td>`).join('') + '</tr>';
-                                });
-                                previewHtml += `</tbody></table></div>`;
-                            }
-
-                            // 내용변경 테이블
-                            if (summary.modified_rows && summary.modified_rows.length > 0) {
-                                previewHtml += `<h5>내용변경 항목 (${summary.modified_count}건)</h5><div class="preview-table-container"><table><thead>${theadHtml}</thead><tbody>`;
-                                summary.modified_rows.forEach(row => {
-                                    previewHtml += `<tr onclick="this.classList.toggle('selected-row')">` + cols.map(c => `<td>${row[c] !== null && row[c] !== undefined ? row[c] : ''}</td>`).join('') + '</tr>';
-                                });
-                                previewHtml += `</tbody></table></div>`;
-                            }
-                            previewHtml += `</div>`;
+                        if (r.summary && r.summary.message) {
+                            previewHtml += `<div class="summary-box"><h4>✅ 처리 내역</h4><p>${r.summary.message}</p></div>`;
                         }
 
                         html += previewHtml;
@@ -355,10 +370,11 @@
         // 업로드된 파일 목록 로드
         async function loadUploadedFiles() {
             try {
-                const response = await fetch('/files');
+                const response = await fetch('/files?task_type=status');
                 const data = await response.json();
                 
                 const fileGrid = document.getElementById('uploadedFiles');
+                const serverFileList = document.getElementById('serverFileList');
                 
                 if (data.files && data.files.length > 0) {
                     fileGrid.innerHTML = data.files.map(f => `
@@ -370,14 +386,15 @@
                         </div>
                     `).join('');
                     
-                    const defaultOption = '<option value="" selected disabled>선택되지 않음</option>';
-                    const optionsHtml = data.files.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
-                    document.getElementById('oldFileSelect').innerHTML = defaultOption + optionsHtml;
-                    document.getElementById('newFileSelect').innerHTML = defaultOption + optionsHtml;
+                    serverFileList.innerHTML = data.files.map(f => `
+                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px; cursor: pointer; padding: 5px; background: var(--bg); border-radius: 4px;">
+                            <input type="checkbox" name="filenames" value="${f.name}">
+                            📄 ${f.name} <span class="file-size" style="color:var(--text-light); font-size:0.8em;">(${formatSize(f.size)})</span>
+                        </label>
+                    `).join('');
                 } else {
                     fileGrid.innerHTML = '<p>업로드된 파일이 없습니다.</p>';
-                    document.getElementById('oldFileSelect').innerHTML = '<option value="" selected disabled>업로드된 파일 없음</option>';
-                    document.getElementById('newFileSelect').innerHTML = '<option value="" selected disabled>업로드된 파일 없음</option>';
+                    serverFileList.innerHTML = '<p style="color: var(--text-light); font-size: 0.9em;">업로드된 파일이 없습니다.</p>';
                 }
             } catch (error) {
                 console.error('파일 목록 로드 오류:', error);
@@ -390,7 +407,7 @@
                 return;
             }
             try {
-                const response = await fetch(`/files/${filename}`, {
+                const response = await fetch(`/files/${filename}?task_type=status`, {
                     method: 'DELETE'
                 });
                 const data = await response.json();

@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPA/AI 자동화 플랫폼 - 고객사별 작업</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .summary-box {
+            border: 1px solid #ddd;
+            padding: 15px 20px;
+            margin-top: 20px;
+            border-radius: 6px;
+            background-color: #f9f9f9;
+        }
+        .summary-box h4 {
+            margin-top: 0;
+            font-size: 1.1em;
+        }
+        .summary-box h5 {
+            margin-top: 20px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+        }
+        .preview-table-container {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .preview-table-container table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            font-size: 0.95em;
+        }
+        .preview-table-container th, .preview-table-container td {
+            border-bottom: 1px solid #ddd;
+            padding: 12px 10px;
+            text-align: left;
+            word-wrap: break-word;
+        }
+        .preview-table-container thead th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        .preview-table-container tbody tr:hover {
+            background-color: #f5f5f5;
+            cursor: pointer;
+        }
+        .preview-table-container tbody tr.selected-row td {
+            background-color: #e3f2fd;
+        }
+        .preview-table-container tbody tr.selected-row td:first-child {
+            box-shadow: inset 3px 0 0 0 var(--primary);
+        }
+        
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 12px 20px;
+            position: fixed;
+            z-index: 1000;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* 하단 고정 액션 바 */
+        .sticky-action-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            padding: 15px 20px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            z-index: 1000;
+            border-top: 1px solid var(--border);
+        }
+
+        /* 로딩 오버레이 */
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+            border-radius: 12px;
+        }
+
+        .spinner {
+            width: 50px; height: 50px;
+            border: 5px solid var(--border);
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        body {
+            padding-bottom: 80px; /* 하단 고정 바 영역 확보 */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        {% set active_page = 'rpa' %}
+        {% include 'header.html' %}
+
+        <!-- 메인 콘텐츠 -->
+        <main class="main">
+
+            <section class="card">
+                <h2>🏢 청구자료 작성 대상 고객사</h2>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <select id="task_customer" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                    </select>
+                </div>
+            </section>
+
+            <!-- 공통 입력란 -->
+            <section class="card" id="commonInputSection">
+                <h2 style="color: var(--primary);">📌 1단계: 이번 달 공통 정보 확인 (필수)</h2>
+                <p style="color: var(--text-light); margin-bottom: 15px;">아래 정보를 한 번만 확인해 두면, 모든 산출물 생성 시 동일하게 적용됩니다. (고객사를 선택하면 알맞은 기준으로 자동 조정됩니다.)</p>
+                <div style="background: #f0f7ff; border: 1px solid #cce4f7; border-radius: 8px; padding: 20px; width: 100%; box-sizing: border-box;">
+                    <h4 style="color: #0056b3; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">🟦 [모든 문서 공통] 날짜 정보</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #004085;">청구연월</label>
+                            <input type="text" class="common-input" id="global_month" data-key="청구연월" value="" style="width: 100%; padding: 10px; border: 1px solid #b8daff; border-radius: 4px; font-weight: bold; background-color: #fff;">
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #004085;">작성일자</label>
+                            <input type="text" class="common-input" id="global_date" data-key="작성일자" value="" style="width: 100%; padding: 10px; border: 1px solid #b8daff; border-radius: 4px; font-weight: bold; background-color: #fff;">
+                        </div>
+                        <div style="flex: 1; min-width: 200px; display: none;" id="global_doc_num_container">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #004085;">공문번호</label>
+                            <input type="text" class="common-input" id="global_doc_num" data-key="공문번호" value="" placeholder="예: 1234" style="width: 100%; padding: 10px; border: 1px solid #b8daff; border-radius: 4px; font-weight: bold; background-color: #fff;">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 체크리스트 섹션 -->
+            <section class="card">
+                <h2>📋 월간/분기별 산출물 생성 현황</h2>
+                
+                <!-- 전체 진행률 표시바 -->
+                <div id="progressSummary" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid var(--border); border-radius: 6px; background: #f8fafc;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <strong style="color: var(--primary);">이번 달 전체 진행률</strong>
+                        <span id="progressText" style="font-weight: bold;">0 / 0 완료 (0%)</span>
+                    </div>
+                    <div style="width: 100%; background: #e2e8f0; height: 10px; border-radius: 5px; overflow: hidden;">
+                        <div id="progressBar" style="width: 0%; height: 10px; background: var(--success); transition: width 0.4s ease;"></div>
+                    </div>
+                </div>
+
+                <div class="preview-table-container">
+                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f2f2f2;">
+                                <th style="padding: 12px 10px; border-bottom: 1px solid #ddd; width: 40%;">산출물 (문서) 명</th>
+                                <th style="padding: 12px 10px; border-bottom: 1px solid #ddd; width: 20%;">제출 마감일</th>
+                                <th style="padding: 12px 10px; border-bottom: 1px solid #ddd; width: 20%;">완료 확인</th>
+                                <th style="padding: 12px 10px; border-bottom: 1px solid #ddd; width: 20%;">자동화 실행</th>
+                            </tr>
+                        </thead>
+                        <tbody id="checklistBody">
+                            <tr>
+                                <td colspan="4" style="padding: 20px; text-align: center; color: var(--text-light);">
+                                    위에서 고객사를 먼저 선택해 주세요.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ✨ 새로 추가된 미리보기 섹션 (기본적으로 숨겨짐) -->
+            <section class="card" id="previewSection" style="display: none; position: relative;">
+                <h2>👀 생성 결과 및 미리보기</h2>
+
+                <!-- 로딩 오버레이 -->
+                <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+                    <div class="spinner"></div>
+                    <div id="loadingMessage" style="margin-top: 15px; font-weight: bold; color: var(--primary);">작업을 처리 중입니다...</div>
+                </div>
+
+                <div id="previewContent" style="margin-bottom: 20px;"></div>
+            </section>
+
+        </main>
+
+        <!-- 하단 고정 액션 바 -->
+        <div id="stickyActionBar" class="sticky-action-bar" style="display: none;">
+            <button id="retryBtn" class="btn" style="font-size: 1.1em; padding: 10px 20px; background-color: #6c757d; color: white;" onclick="retryTask()">🔄 초기화</button>
+            <button id="saveBtn" class="btn btn-primary" style="font-size: 1.1em; padding: 10px 20px;" onclick="applyChanges()">💾 계산 적용 (저장)</button>
+            <a href="#" id="downloadBtn" class="btn btn-success" style="font-size: 1.1em; padding: 10px 20px;">🚀 이 내용으로 문서 생성</a>
+            <a href="#" id="pdfDownloadBtn" class="btn btn-danger" style="display: none; font-size: 1.1em; padding: 10px 20px; background-color: #dc3545; border-color: #dc3545; color: white;">📄 PDF 다운로드</a>
+        </div>
+
+        <footer class="footer">
+            <p>RPA/AI 자동화 플랫폼 v1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/rpa_renderer.js"></script>
+    <script src="/static/js/customer_manager.js"></script>
+    <script src="/static/js/customers/koreapost.js"></script>
+    <script src="/static/js/customers/nice_ibk.js"></script>
+    <script src="/static/js/customers/nice_lotte.js"></script>
+    <script src="/static/js/customers/nice_hyundai.js"></script>
+    <script src="/static/js/customers/nice_emarthdc.js"></script>
+    <script src="/static/js/customers/nice_lottemobile.js"></script>
+    <script src="/static/js/customers/shinhyup.js"></script>
+    <script>
+
+        // 계산기 Alias 등록 (HTML 인라인 이벤트 호환용)
+        window.formatMoney = RpaCalculator.formatMoney;
+        window.calculateVAT = function(input) { RpaCalculator.calculateVAT(input, 'input_supply', 'input_vat'); };
+        window.calculateFromSupply = function(input) { RpaCalculator.calculateFromSupply(input, 'input_total', 'input_vat'); };
+        window.calculateClaimAmount = RpaCalculator.calculateClaimAmount;
+        window.calculateActualPayment = RpaCalculator.calculateActualPayment;
+        window.calculateSatisfaction = RpaCalculator.calculateSatisfaction;
+        window.calculateRate = RpaCalculator.calculateRate;
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // 💡 페이지 로딩이 완벽히 끝난 후 안전하게 초기 날짜(이번 달/오늘) 세팅
+        function setInitialDates() {
+            const today = new Date();
+            const monthInput = document.getElementById('global_month');
+            const dateInput = document.getElementById('global_date');
+            if (monthInput && !monthInput.value) monthInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월`;
+            if (dateInput && !dateInput.value) dateInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월 ${String(today.getDate()).padStart(2, '0')}일`;
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                CustomerManager.initSelectBox('task_customer');
+                setInitialDates();
+            });
+        } else {
+            CustomerManager.initSelectBox('task_customer');
+            setInitialDates();
+        }
+
+        // 💡 [리팩토링] 고객사별 작업 목록 데이터 (여기만 추가하면 화면이 알아서 그려집니다!)
+        // (고객사별 설정은 static/js/customers/*.js 모듈에서 불러옵니다)
+
+        document.getElementById('task_customer').addEventListener('change', function() {
+            const customer = this.value;
+            const tbody = document.getElementById('checklistBody');
+            const progressSummary = document.getElementById('progressSummary');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            
+            // 1. 선택한 고객사의 데이터를 가져옵니다. (없으면 기본값 1개짜리 제공)
+            const baseCustomer = RpaRenderer.getBaseCustomer(customer);
+            let tasks = [];
+            if (window.RPA_CUSTOMERS && window.RPA_CUSTOMERS[baseCustomer] && window.RPA_CUSTOMERS[baseCustomer].tasks) {
+                tasks = window.RPA_CUSTOMERS[baseCustomer].tasks;
+            } else {
+                tasks = [{ id: customer, op: 'doc_official', title: '1. 📝 맞춤형 공문 생성 (Word)', date: '상시' }];
+            }
+            
+            const total = tasks.length;
+            
+            const allCheckOnly = tasks.every(t => t.op === 'check_only');
+            
+            // 💡 고객사별 청구연월 기준 달 설정
+            const config = CustomerManager.getConfig(baseCustomer);
+            const today = new Date();
+            const targetDate = new Date(today.getFullYear(), today.getMonth() + config.monthOffset, 1);
+            
+            let cachedMonth = null;
+            let cachedDate = null;
+            let cachedDocNum = null;
+            try {
+                const stored = localStorage.getItem(`rpaCommonData_${baseCustomer}`);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (parsed['청구연월']) cachedMonth = parsed['청구연월'];
+                    if (parsed['작성일자']) cachedDate = parsed['작성일자'];
+                    if (parsed['공문번호']) cachedDocNum = parsed['공문번호'];
+                }
+            } catch(e) {}
+            
+            const monthInput = document.getElementById('global_month');
+            const dateInput = document.getElementById('global_date');
+            const docNumContainer = document.getElementById('global_doc_num_container');
+            const docNumInput = document.getElementById('global_doc_num');
+            
+            const monthLabel = monthInput ? monthInput.previousElementSibling : null;
+            if (config.isQuarterly) {
+                if (monthLabel) monthLabel.innerText = '청구분기';
+                const currentQuarter = Math.ceil((today.getMonth() + 1) / 3);
+                if (monthInput) monthInput.value = cachedMonth || `${today.getFullYear()}년 ${currentQuarter}분기`;
+            } else {
+                if (monthLabel) monthLabel.innerText = '청구연월';
+                if (monthInput) monthInput.value = cachedMonth || `${targetDate.getFullYear()}년 ${String(targetDate.getMonth() + 1).padStart(2, '0')}월`;
+            }
+            if (dateInput) dateInput.value = cachedDate || `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월 ${String(today.getDate()).padStart(2, '0')}일`;
+            
+            // 💡 우체국(koreapost)이 아닌 모든 고객사에서 공문번호를 표시합니다
+            if (config.showDocNum) {
+                if (docNumContainer) docNumContainer.style.display = 'block';
+                if (docNumInput) docNumInput.value = cachedDocNum || '';
+            } else {
+                if (docNumContainer) docNumContainer.style.display = 'none';
+                if (docNumInput) docNumInput.value = '';
+            }
+            
+            if (allCheckOnly) {
+                document.getElementById('commonInputSection').style.display = 'none';
+            } else {
+                document.getElementById('commonInputSection').style.display = 'block';
+            }
+
+            // 2. 전체 진행률 UI를 초기화합니다.
+            progressSummary.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.innerText = `0 / ${total} 완료 (0%)`;
+            
+            let savedChecks = {};
+            try { savedChecks = JSON.parse(localStorage.getItem(`rpa_checks_${baseCustomer}`) || '{}'); } catch(e) {}
+
+            // 3. 데이터를 바탕으로 HTML 표(반복문)를 뚝딱 그려냅니다.
+            tbody.innerHTML = tasks.map(task => {
+                if (task.op === 'check_only') {
+                    const tTotal = savedData[`${task.id}_합계금액`] || '';
+                    const tSupply = savedData[`${task.id}_공급가액`] || '';
+                    const tVat = savedData[`${task.id}_부가세`] || '';
+                    return `
+                    <tr style="background: #fdf5f0; border-bottom: 2px solid #fff;">
+                        <td colspan="4" style="padding: 10px 15px; vertical-align: middle;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                                <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400; flex: 1;"><input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); margin-right: 10px;"><span style="white-space: nowrap;">${task.title}</span></label>
+                                <div style="display: flex; align-items: center; gap: 10px; flex: 2; justify-content: flex-end;">
+                                    <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">공급가액</span><input type="text" id="${task.id}_supply" class="check-input" data-task="${task.id}" data-type="공급가액" value="${tSupply}" oninput="formatMoney(this); RpaCalculator.calculateFromSupply(this, '${task.id}_total', '${task.id}_vat'); window.saveCheckData('${baseCustomer}')" style="width: 110px; padding: 6px; border: 1px solid #fce4d6; border-radius: 4px; font-weight: bold; text-align: right; background: #fff;"></div>
+                                    <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">부가세</span><input type="text" id="${task.id}_vat" class="check-input" data-task="${task.id}" data-type="부가세" value="${tVat}" 
+                    </tr>`;
+                } else {
+                    return `<tr><td>${task.title}</td><td>${task.date}</td><td><input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); cursor: pointer;"></td><td><button class="btn btn-primary" onclick="executeTask('${task.op === 'doc_official' ? task.id : customer}', '${task.op}')">생성 실행</button></td></tr>`;
+                }
+            }).join('');
+            
+            // 💡 렌더링 직후 현재 체크 상태에 맞게 진행률 업데이트
+            updateProgress(total);
+        });
+
+        function updateProgress(total) {
+            const checked = document.querySelectorAll('#checklistBody input[type="checkbox"]:checked').length;
+            const percent = Math.round((checked / total) * 100);
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressText').innerText = `${checked} / ${total} 완료 (${percent}%)`;
+        }
+    
+        function saveCheckState(baseCustomer, taskId, isChecked) {
+            let checks = {};
+            try { checks = JSON.parse(localStorage.getItem(`rpa_checks_${baseCustomer}`) || '{}'); } catch(e) {}
+            checks[taskId] = isChecked;
+            localStorage.setItem(`rpa_checks_${baseCustomer}`, JSON.stringify(checks));
+        }
+
+        // 선택한 작업을 기억해둘 전역 변수
+        let currentTaskCustomer = '';
+        let currentTaskOperation = '';
+
+        function executeTask(customer, operation, overrides = null, isRefreshing = false) {
+            // 💡 5번 제증명 서류 3종 작업은 파이썬 로딩 대신 '특별 가이드 UI' 즉시 렌더링
+            if (CustomerManager.isGuideTask(operation)) {
+                renderCertificateGuideUI();
+                return;
+            }
+
+            currentTaskCustomer = customer;
+            currentTaskOperation = operation;
+            
+            if (isRefreshing) showLoading("데이터를 계산하고 화면을 업데이트 중입니다...");
+            else showLoading("데이터를 불러오는 중입니다...");
+
+            const formData = new FormData();
+            const optionsObj = {
+                preview_only: (operation === 'doc_official' || operation.startsWith('kp_task')),
+                billing_amount: "",
+                doc_number: ""
+            };
+            
+            // 날짜 기본값 및 오버라이드 병합
+            if (overrides) {
+                optionsObj.context_override = overrides;
+            } else {
+                // 💡 1. Local Storage에서 고객사별 저장된 공통 데이터 불러오기
+                let savedData = {};
+                const baseCustomer = RpaRenderer.getBaseCustomer(customer);
+                try {
+                    const stored = localStorage.getItem(`rpaCommonData_${baseCustomer}`);
+                    if (stored) {
+                        savedData = JSON.parse(stored);
+                        // 💡 잘못 저장된 캐시 데이터 강제 삭제 필터링
+                        const ignoreVals = ["엑셀 자동 로드", "문서 생성 시 자동 계산", "엑셀파일 연동", "데이터 불러오는 중...", "로드 실패 (생성 시 적용됨)", "로드 실패 (엑셀/양식 확인)"];
+                        for(const k in savedData) {
+                            if(ignoreVals.includes(savedData[k])) {
+                                delete savedData[k];
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                // 💡 전역 날짜/공문번호 입력칸에서 값을 가져옵니다.
+                const monthInput = document.getElementById('global_month');
+                const dateInput = document.getElementById('global_date');
+                const docNumInput = document.getElementById('global_doc_num');
+                if (monthInput && monthInput.value) savedData['청구연월'] = monthInput.value;
+                if (dateInput && dateInput.value) savedData['작성일자'] = dateInput.value;
+                if (docNumInput && docNumInput.value && document.getElementById('global_doc_num_container').style.display !== 'none') {
+                    savedData['공문번호'] = docNumInput.value;
+                }
+                
+                // 💡 3, 4번 분리된 금액 매칭 (상세 대시보드 연동용)
+                savedData = CustomerManager.mapDataForServer(operation, savedData);
+
+                optionsObj.context_override = savedData;
+            }
+            
+            fetch(`/files/process?operation=${operation}&customer=${customer}&options=${encodeURIComponent(JSON.stringify(optionsObj))}`, { 
+                method: 'POST', 
+                body: formData 
+            })
+            .then(res => res.text())
+            .then(text => {
+                let data;
+                try { data = JSON.parse(text); } catch (e) { throw new Error(`서버 오류: ${text}`); }
+                
+                if (data.results && data.results.length > 0) {
+                    const result = data.results[0];
+                    if (optionsObj.preview_only && result.output === "") {
+                        // 미리보기 모드
+                        renderPreviewEditor(result.summary.context, isRefreshing);
+                    } else {
+                        // 즉시 파일 생성 (엑셀 등 일반 파일)
+                        showDownloadResult(result, isRefreshing);
+                    }
+                } else {
+                    alert(`오류 발생: ${data.message || data.detail}`);
+                }
+            })
+            .catch(err => alert(`오류: ${err.message}`))
+            .finally(() => {
+                hideLoading();
+            });
+        }
+
+        // PDF 데이터 추출 함수 (대시보드 전용)
+        async function extractPdfStatsDash(input) {
+            if (!input.files || input.files.length === 0) return;
+            const file = input.files[0];
+            
+            showToast("📄 PDF에서 데이터를 추출하는 중입니다...");
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/files/extract-stats', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    const stats = data.stats;
+                    let successCount = 0;
+                    
+                    for (const [key, value] of Object.entries(stats)) {
+                        const inputEl = document.querySelector(`.edit-input[data-key="${key}"]`);
+                        if (inputEl && value !== "") {
+                            inputEl.value = value;
+                            successCount++;
+                            // 시각적 피드백 효과 (초록색 반짝임)
+                            inputEl.style.backgroundColor = '#e8f5e9';
+                            setTimeout(() => { inputEl.style.backgroundColor = '#fff'; }, 1500);
+                        }
+                    }
+                    
+                    // 값 채운 후 연산 재실행
+                    RpaRenderer.onPdfExtracted(currentTaskCustomer);
+                    
+                    showToast(`✅ PDF 데이터 추출 완료! (${successCount}개 항목 적용됨)`);
+                } else {
+                    alert(`추출 실패: ${data.detail || data.message}`);
+                }
+            } catch (error) {
+                alert(`서버 통신 오류: ${error.message}`);
+            } finally {
+                input.value = ""; // 초기화하여 다음번에도 같은 파일 선택 가능하게 함
+            }
+        }
+
+        // 💡 저장 버튼 클릭 시 변경사항 파이썬에 적용 및 새로고침
+        function applyChanges() {
+            const inputs = document.querySelectorAll('.edit-input');
+            const contextOverride = {};
+            inputs.forEach(input => {
+                // 💡 안내 문구 필터링
+                const ignoreVals = ["엑셀 자동 로드", "문서 생성 시 자동 계산", "엑셀파일 연동", "데이터 불러오는 중...", "로드 실패 (생성 시 적용됨)", "로드 실패 (엑셀/양식 확인)"];
+                if (!ignoreVals.includes(input.value)) {
+                    contextOverride[input.dataset.key] = input.value;
+                }
+            });
+            
+            // 💡 상세 에디터에서 수정한 날짜를 메인 화면(파란 박스)에도 즉시 동기화
+            if (contextOverride['청구연월']) {
+                const globalMonth = document.getElementById('global_month');
+                if (globalMonth) globalMonth.value = contextOverride['청구연월'];
+            }
+            if (contextOverride['작성일자']) {
+                const globalDate = document.getElementById('global_date');
+                if (globalDate) globalDate.value = contextOverride['작성일자'];
+            }
+            if (contextOverride['공문번호']) {
+                const globalDocNum = document.getElementById('global_doc_num');
+                if (globalDocNum) globalDocNum.value = contextOverride['공문번호'];
+            }
+            
+            // 💡 2. 저장 버튼 누를 때 Local Storage에 모든 입력값 기억하기
+            if (currentTaskCustomer) {
+                const baseCustomer = RpaRenderer.getBaseCustomer(currentTaskCustomer);
+                let existingData = {};
+                try { existingData = JSON.parse(localStorage.getItem(`rpaCommonData_${baseCustomer}`) || '{}'); } catch(e) {}
+                
+                // 💡 상세화면에서 수정한 값을 원클릭 화면용(분리된 키)으로도 저장
+                let dataToStore = CustomerManager.mapDataForStorage(currentTaskOperation, { ...existingData, ...contextOverride });
+                localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify(dataToStore));
+            }
+
+            executeTask(currentTaskCustomer, currentTaskOperation, contextOverride, true);
+        }
+
+        // 미리보기 및 인라인 에디터 생성
+        function renderPreviewEditor(context, isRefreshing = false) {
+            const previewSection = document.getElementById('previewSection');
+            const previewContent = document.getElementById('previewContent');
+            
+            let html = `<div style="padding: 15px; background: #e8f5e9; color: #2e7d32; border-radius: 6px; margin-bottom: 20px; font-weight: bold;">✅ 엑셀 데이터 불러오기 완료. 필수 입력 항목을 확인하고 저장해 주세요.</div>`;
+            
+            delete context['모든_변수_확인용']; // 화면에 일반 입력칸으로 생성되는 것을 방지
+            
+            // 💡 작업별로 노출할 핵심 키워드를 동적으로 설정
+            let exposedKeys = [];
+            const baseCustomer = RpaRenderer.getBaseCustomer(currentTaskCustomer);
+            
+            if (window.RPA_CUSTOMERS && window.RPA_CUSTOMERS[baseCustomer] && window.RPA_CUSTOMERS[baseCustomer].getDashboardKeys) {
+                exposedKeys = window.RPA_CUSTOMERS[baseCustomer].getDashboardKeys(currentTaskOperation, currentTaskCustomer) || [];
+            }
+
+            // 날짜 키는 항상 맨 밑에 고정
+            const dateKeys = ['청구연월', '작성일자'];
+            
+            if (exposedKeys.length > 0) {
+                if (CustomerManager.showPdfUploadInput(currentTaskCustomer)) {
+                    html += `<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                        <h4 style="margin: 0; color: var(--text);">📌 필수 확인 및 통계 정보</h4>
+                        <button type="button" class="btn" style="background: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-size: 0.85em; padding: 6px 12px; font-weight: bold; border-radius: 4px;" onclick="document.getElementById('dashPdfUploadInput').click();">📄 서비스 수준 관리 보고서 불러오기(PDF)</button>
+                        <input type="file" id="dashPdfUploadInput" accept=".pdf" style="display: none;" onchange="extractPdfStatsDash(this)">
+                    </div>`;
+                } else {
+                    html += `<h4 style="margin-bottom: 15px; color: var(--text);">📌 필수 확인 및 금액 정보</h4>`;
+                }
+                html += `<div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">`;
+                
+                for (const key of exposedKeys) {
+                    if (context[key] !== undefined) {
+                        let inputHtml = RpaRenderer.renderDashboardInput(key, context[key], true, currentTaskOperation, currentTaskCustomer);
+
+                    html += `<div style="flex: 1; min-width: 200px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: var(--text);">${key}</label>
+                        ${inputHtml}
+                    </div>`;
+                }
+            }
+            
+            html += `</div>`;
+            }
+
+            // 상세 변수 토글 시작
+            html += `<details style="margin-bottom: 20px; border: 1px solid var(--border); border-radius: 6px; background: #fff;">
+                <summary style="font-weight: bold; cursor: pointer; color: var(--text); padding: 15px; font-size: 1.05em; background: #f8fafc; border-radius: 6px;">⚙️ 상세 변수 확인 및 직접 수정하기 (클릭)</summary>
+                <div style="padding: 15px; border-top: 1px solid var(--border);">
+                    <div class="preview-table-container">
+                        <table style="width: 100%; border-collapse: collapse;">`;
+
+            // 파이썬 백엔드 개편에 맞춘 숨김 키 목록
+            const hiddenKeys = ['청구연도', '청구월', '전월연도', '전월', '작성일자_숫자', '작성일자_점', '작성연도_숫자', '작성월_숫자', '작성일자_일', '공문끝번호', '표데이터'];
+
+            let hiddenHtml = '';
+            
+            for (const [key, value] of Object.entries(context)) {
+                // 지정된 숨김 키워드이거나, 엑셀 중복 컬럼(.1, .2 등) 및 빈 컬럼(Unnamed)인 경우 화면에서 숨김
+                if (hiddenKeys.includes(key) || key.match(/\.\d+$/) || key.startsWith('Unnamed')) {
+                    hiddenHtml += `<input type="hidden" class="edit-input" data-key="${key}" value="${typeof value === 'object' ? '' : value}">`;
+                    continue;
+                }
+                
+                // 💡 상단 필수 항목이나 하단 고정 날짜 항목은 표에서 제외
+                if (exposedKeys.includes(key) || dateKeys.includes(key)) {
+                    continue;
+                }
+                
+                let inputHtml = RpaRenderer.renderDashboardInput(key, value, false, currentTaskOperation, currentTaskCustomer);
+
+                html += `<tr>
+                    <th style="background: #f8fafc; border-bottom: 1px solid var(--border); padding: 10px; width: 30%; text-align: left;">${key}</th>
+                    <td style="border-bottom: 1px solid var(--border); padding: 10px;">${inputHtml}</td>
+                </tr>`;
+            }
+            
+            html += `</table></div></div></details>`;
+
+            // 맨 밑에 고정할 날짜 항목
+            html += `<h4 style="margin-bottom: 15px; color: var(--text);">📅 필수 날짜 정보 (고정)</h4>`;
+            html += `<div style="display: flex; gap: 15px; margin-bottom: 10px;">`;
+            
+            for (const key of dateKeys) {
+                if (context[key] !== undefined) {
+                    html += `<div style="flex: 1; min-width: 200px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: var(--text);">${key}</label>
+                        <input type="text" class="edit-input" data-key="${key}" value="${context[key]}" style="width: 100%; padding: 10px; border: 2px solid var(--primary); border-radius: 4px; box-sizing: border-box; font-weight: bold; background-color: #f4faff;">
+                    </div>`;
+                }
+            }
+            html += `</div>`;
+            
+            html += `<div style="font-size: 0.85em; color: var(--text-light); margin-bottom: 20px;">💡 금액/날짜 수정 후 하단의 <b>[💾 계산 적용 (저장)]</b> 버튼을 누르면 연관 변수가 자동 업데이트됩니다.</div>`;
+            
+            html += hiddenHtml;
+            
+            previewContent.innerHTML = html;
+             // 💡 금액 필드 초기 로드 시 자동 콤마(,) 포맷팅 일괄 적용
+            document.querySelectorAll('.money-input').forEach(input => {
+                if(input.value) formatMoney(input);
+            });
+            
+            // 💡 화면 띄울 때 연관 금액들(실지급액, 청구금액 등) 즉시 계산 동기화
+            RpaRenderer.onDashboardRendered(context, currentTaskOperation, currentTaskCustomer);
+            
+            const downloadBtn = document.getElementById('downloadBtn');
+            downloadBtn.innerHTML = `🚀 이 내용으로 문서 생성 및 다운로드`;
+            downloadBtn.href = "#";
+            downloadBtn.onclick = function(e) {
+                e.preventDefault();
+                submitFinalDocument();
+            };
+            
+            const pdfDownloadBtn = document.getElementById('pdfDownloadBtn');
+            if (pdfDownloadBtn) pdfDownloadBtn.style.display = 'none';
+            
+            const retryBtn = document.getElementById('retryBtn');
+            if (retryBtn) retryBtn.style.display = 'inline-block';
+            
+            const stickyActionBar = document.getElementById('stickyActionBar');
+            if (stickyActionBar) stickyActionBar.style.display = 'flex';
+
+            previewSection.style.display = 'block';
+            if (!isRefreshing) {
+                previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // 수정한 데이터로 진짜 문서 생성 요청
+        async function submitFinalDocument() {
+            showLoading("최종 문서를 생성 중입니다...");
+            
+            const inputs = document.querySelectorAll('.edit-input');
+            const contextOverride = {};
+            inputs.forEach(input => {
+                // 💡 안내 문구 필터링
+                const ignoreVals = ["엑셀 자동 로드", "문서 생성 시 자동 계산", "엑셀파일 연동", "데이터 불러오는 중...", "로드 실패 (생성 시 적용됨)", "로드 실패 (엑셀/양식 확인)"];
+                if (!ignoreVals.includes(input.value)) {
+                    contextOverride[input.dataset.key] = input.value;
+                }
+            });
+            
+            // 💡 최종 생성 시에도 수정한 날짜를 메인 화면(파란 박스)에 즉시 동기화
+            if (contextOverride['청구연월']) {
+                const globalMonth = document.getElementById('global_month');
+                if (globalMonth) globalMonth.value = contextOverride['청구연월'];
+            }
+            if (contextOverride['작성일자']) {
+                const globalDate = document.getElementById('global_date');
+                if (globalDate) globalDate.value = contextOverride['작성일자'];
+            }
+            if (contextOverride['공문번호']) {
+                const globalDocNum = document.getElementById('global_doc_num');
+                if (globalDocNum) globalDocNum.value = contextOverride['공문번호'];
+            }
+            
+            // 💡 3. 문서 최종 생성 시에도 확실하게 한 번 더 기억하기
+            if (currentTaskCustomer) {
+                const baseCustomer = RpaRenderer.getBaseCustomer(currentTaskCustomer);
+                let existingData = {};
+                try { existingData = JSON.parse(localStorage.getItem(`rpaCommonData_${baseCustomer}`) || '{}'); } catch(e) {}
+                
+                let dataToStore = CustomerManager.mapDataForStorage(currentTaskOperation, { ...existingData, ...contextOverride });
+                localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify(dataToStore));
+            }
+            
+            try {
+                const formData = new FormData();
+                const optionsObj = { context_override: contextOverride };
+                
+                const response = await fetch(`/files/process?operation=${currentTaskOperation}&customer=${currentTaskCustomer}&options=${encodeURIComponent(JSON.stringify(optionsObj))}`, { 
+                    method: 'POST', body: formData 
+                });
+                
+                const responseText = await response.text();
+                let data;
+                try { data = JSON.parse(responseText); } catch (e) { throw new Error(`서버 오류: ${responseText}`); }
+                
+                if (response.ok && data.results && data.results.length > 0) {
+                    showDownloadResult(data.results[0], true);
+                } else {
+                    alert(`오류 발생: ${data.message || data.detail}`);
+                }
+            } catch (error) {
+                alert(`오류: ${error.message}`);
+            }
+            finally {
+                hideLoading();
+            }
+        }
+
+        // 파일 생성 결과 다운로드 버튼 연결
+        function showDownloadResult(result, isFromEditor = false) {
+            const filename = result.output.split(/[/\\]/).pop();
+            const msg = result.summary && result.summary.message ? result.summary.message : '생성이 완료되었습니다.';
+            
+            const previewSection = document.getElementById('previewSection');
+            const previewContent = document.getElementById('previewContent');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            const stickyActionBar = document.getElementById('stickyActionBar');
+            if (stickyActionBar) stickyActionBar.style.display = 'flex';
+
+            if (!isFromEditor) {
+                // 에디터를 거치지 않은 경우(엑셀 생성 등) 화면 렌더링
+                let html = `<div style="padding: 15px; background: #e8f5e9; color: #2e7d32; border-radius: 6px; margin-bottom: 20px; font-weight: bold;">✅ ${msg}</div>`;
+                previewContent.innerHTML = html;
+            } else {
+                // 에디터에서 생성한 경우 알림만 표시
+                showToast("✅ 생성이 완료되었습니다!");
+            }
+            
+            downloadBtn.href = `/files/download/${filename}`;
+            let fileType = filename.endsWith('.xlsx') ? 'Excel' : 'Word';
+            downloadBtn.innerHTML = `⬇️ <b>${filename}</b> (${fileType}) 다운로드`;
+            downloadBtn.onclick = null; // 커스텀 클릭 해제
+            
+            const pdfDownloadBtn = document.getElementById('pdfDownloadBtn');
+            if (pdfDownloadBtn) {
+                if (filename.endsWith('.docx') || filename.endsWith('.xlsx')) {
+                    pdfDownloadBtn.href = "#";
+                    pdfDownloadBtn.innerHTML = `⚙️ PDF로 변환하기`;
+                    pdfDownloadBtn.style.display = 'inline-block';
+                    pdfDownloadBtn.onclick = function(e) { e.preventDefault(); requestPdfConversion(filename, pdfDownloadBtn); };
+                } else {
+                    pdfDownloadBtn.style.display = 'none';
+                }
+            }
+            
+            const retryBtn = document.getElementById('retryBtn');
+            if (retryBtn) retryBtn.style.display = 'inline-block';
+            
+            previewSection.style.display = 'block';
+            if(!isFromEditor) {
+                previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // 제증명 서류 발급 가이드 UI 렌더링
+        function renderCertificateGuideUI() {
+            const previewSection = document.getElementById('previewSection');
+            const previewContent = document.getElementById('previewContent');
+            
+            let html = `
+                <div style="padding: 25px; background: #fff; border: 1px solid var(--border); border-radius: 8px;">
+                    <h3 style="color: var(--primary); margin-bottom: 10px;">🌐 제증명 서류 3종 발급 도우미</h3>
+                    <p style="margin-bottom: 25px; color: var(--text-light); line-height: 1.6;">
+                        지방세 납세증명, 국세 납세증명서, 4대 사회보험 완납증명서는 정부/공공기관 사이트에서 <b>공동인증서(또는 간편인증)</b>를 통해 발급받아야 합니다.<br>
+                        아래 바로가기 링크를 통해 해당 사이트로 이동하여 서류를 직접 발급해 주세요.
+                    </p>
+                    
+                    <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <a href="https://plus.gov.kr/" target="_blank" style="flex: 1; min-width: 200px; text-decoration: none; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; background: #f8fafc; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--primary)'; this.style.background='#f1f5f9';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';">
+                            <div style="font-size: 30px; margin-bottom: 10px;">🏛️</div>
+                            <strong style="color: #1e293b; font-size: 1.1em; display: block; margin-bottom: 5px;">정부24 (지방세/국세)</strong>
+                            <span style="font-size: 0.9em; color: var(--text-light);">지방세 납세증명 / 납세증명서(국세) 발급</span>
+                        </a>
+                        <a href="https://si4n.nhis.or.kr/jpba/JpBaa00101.do" target="_blank" style="flex: 1; min-width: 200px; text-decoration: none; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; background: #f8fafc; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--primary)'; this.style.background='#f1f5f9';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';">
+                            <div style="font-size: 30px; margin-bottom: 10px;">🏥</div>
+                            <strong style="color: #1e293b; font-size: 1.1em; display: block; margin-bottom: 5px;">사회보험 징수포털</strong>
+                            <span style="font-size: 0.9em; color: var(--text-light);">4대 사회보험 완납증명서 발급</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+            
+            previewContent.innerHTML = html;
+            
+            const stickyActionBar = document.getElementById('stickyActionBar');
+            if (stickyActionBar) stickyActionBar.style.display = 'none'; // 하단 저장/다운로드 바는 숨김
+
+            previewSection.style.display = 'block';
+            previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // PDF 변환 요청 함수
+        async function requestPdfConversion(filename, btnElement) {
+            showLoading("PDF로 변환 중입니다...");
+            btnElement.innerHTML = `⏳ 변환 중... (잠시만 기다려주세요)`;
+            btnElement.onclick = (e) => e.preventDefault();
+            btnElement.style.opacity = '0.7';
+
+            try {
+                const formData = new FormData();
+                const optionsObj = { filename: filename };
+                const response = await fetch(`/files/process?operation=doc_convert_pdf&customer=${currentTaskCustomer}&options=${encodeURIComponent(JSON.stringify(optionsObj))}`, { 
+                    method: 'POST', body: formData 
+                });
+                const text = await response.text();
+                const data = JSON.parse(text);
+                
+                if (data.results && data.results.length > 0) {
+                    const result = data.results[0];
+                    const pdfName = result.output.split(/[/\\]/).pop();
+                    btnElement.href = `/files/download/${pdfName}`;
+                    btnElement.innerHTML = `📄 <b>${pdfName}</b> 다운로드`;
+                    btnElement.onclick = null;
+                    btnElement.style.opacity = '1';
+                    showToast("✅ PDF 변환이 완료되었습니다!");
+                } else {
+                    alert(`오류 발생: ${data.message || data.detail}`);
+                    btnElement.innerHTML = `⚙️ PDF로 변환하기`;
+                    btnElement.style.opacity = '1';
+                    btnElement.onclick = function(e) { e.preventDefault(); requestPdfConversion(filename, btnElement); };
+                }
+            } catch(error) {
+                alert(`오류: ${error.message}`);
+                btnElement.innerHTML = `⚙️ PDF로 변환하기`;
+                btnElement.style.opacity = '1';
+                btnElement.onclick = function(e) { e.preventDefault(); requestPdfConversion(filename, btnElement); };
+            }
+            finally {
+                hideLoading();
+            }
+        }
+
+        // 다시 시도 버튼 클릭 시 동일한 작업 재실행
+        function retryTask() {
+            if (currentTaskCustomer && currentTaskOperation) {
+                executeTask(currentTaskCustomer, currentTaskOperation);
+            }
+        }
+
+        document.addEventListener('keydown', async function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+                const selectedRows = document.querySelectorAll('.preview-table-container tbody tr.selected-row');
+                if (selectedRows.length > 0 && window.getSelection().toString() === '') {
+                    e.preventDefault();
+                    const lines = Array.from(selectedRows).map(row => Array.from(row.cells).map(td => td.innerText).join('\t'));
+                    const textToCopy = lines.join('\n');
+                    try {
+                        await navigator.clipboard.writeText(textToCopy);
+                        showToast(`✅ ${selectedRows.length}개의 행이 복사되었습니다. (엑셀에 붙여넣기 가능)`);
+                    } catch (err) { console.error('복사 실패:', err); }
+                }
+            }
+        });
+
+        function showToast(msg) {
+            let toast = document.getElementById('toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'toast';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.className = 'show';
+            setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 2000);
+        }
+
+        // 범용 로딩 오버레이 제어 함수
+        function showLoading(message = "작업을 처리 중입니다...") {
+            const overlay = document.getElementById('loadingOverlay');
+            const msgEl = document.getElementById('loadingMessage');
+            if (msgEl) msgEl.innerText = message;
+            if (overlay) overlay.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+    </script>
+</html>

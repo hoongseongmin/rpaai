@@ -83,6 +83,7 @@ body {
     padding: 25px;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    min-width: 0; /* 테이블 내용이 길어질 때 카드가 화면 밖으로 무한정 늘어나는 현상 방지 */
 }
 
 .card h2 {

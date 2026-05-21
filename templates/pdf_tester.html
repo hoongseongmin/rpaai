@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPA/AI 자동화 플랫폼 - PDF 추출 확인</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+        }
+        .stat-item {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: var(--text-light);
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        .raw-text {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: Consolas, Monaco, monospace;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid var(--border);
+            border-top: 4px solid var(--primary); border-radius: 50%;
+            animation: spin 1s linear infinite; margin: 0 auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% set active_page = 'pdf_test' %}
+        {% include 'header.html' %}
+
+        <main class="main">
+            <section class="card">
+                <h2>📄 서비스 수준 관리 보고서 PDF 데이터 추출기 (테스트)</h2>
+                <p style="color: var(--text-light); margin-bottom: 20px;">PDF 파일을 업로드하면 파이썬이 어떤 텍스트를 읽어 들이고, 어떤 항목을 추출해내는지 눈으로 직접 확인할 수 있습니다.</p>
+                
+                <div class="file-drop-area" onclick="document.getElementById('pdfInput').click();" style="padding: 50px;">
+                    <div style="font-size: 3rem; margin-bottom: 10px;">📑</div>
+                    <span class="file-msg" style="font-size: 1.1em; font-weight: bold;">추출 결과를 확인할 PDF 파일을 클릭하여 선택하세요</span>
+                    <input type="file" id="pdfInput" accept=".pdf" style="display: none;" onchange="handleFileSelect(this)">
+                </div>
+            </section>
+
+            <div id="loadingIndicator" style="display: none; text-align: center; padding: 40px 20px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 15px; font-weight: bold; color: var(--primary); font-size: 1.1em;">PDF 데이터를 분석하고 있습니다...</p>
+            </div>
+
+            <div id="resultSection" style="display: none;">
+                <section class="card">
+                    <h3 style="color: var(--text); margin-bottom: 10px; font-size: 1.2em;">🔍 1. 파이썬이 읽어들인 전체 데이터 (Raw Data)</h3>
+                    <p style="color: var(--text-light); font-size: 0.95em; margin-bottom: 15px;">
+                        * 파이썬은 아래 텍스트 패턴을 보고 숫자를 찾습니다. 매칭이 잘 안 된다면 <b>줄바꿈(↵)이나 단어의 형태</b>가 어떻게 들어왔는지 아래에서 확인해 보세요.<br>
+                        (이 부분을 복사해서 AI에게 알려주시면 패턴을 즉시 맞춰드립니다!)
+                    </p>
+                    
+                    <h4 style="color: #64748b; margin-bottom: 8px;">📝 일반 텍스트 형태</h4>
+                    <div class="raw-text" id="rawText" style="margin-bottom: 20px;"></div>
+                    
+                    <h4 style="color: #64748b; margin-bottom: 8px;">📊 표(Table) 인식 형태</h4>
+                    <div class="raw-text" id="rawTableText" style="background: #0f172a; font-size: 0.85em;"></div>
+                </section>
+
+                <section class="card">
+                    <h3 style="color: var(--success); margin-bottom: 20px; font-size: 1.2em;">✅ 2. 현재 정규식 매칭 결과</h3>
+                    <div class="stat-grid" id="statGrid">
+                        <!-- JS 동적 렌더링 -->
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        async function handleFileSelect(input) {
+            if (!input.files || input.files.length === 0) return;
+            const file = input.files[0];
+            
+            document.getElementById('resultSection').style.display = 'none';
+            document.getElementById('loadingIndicator').style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/files/extract-stats', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    let gridHtml = '';
+                    for (const [key, value] of Object.entries(data.stats)) {
+                        const displayValue = value === "" ? '<span style="color: #cbd5e1; font-weight: normal;">(값 없음)</span>' : value;
+                        gridHtml += `<div class="stat-item"><div class="stat-label">${key}</div><div class="stat-value">${displayValue}</div></div>`;
+                    }
+                    document.getElementById('statGrid').innerHTML = gridHtml;
+                    
+                    // 숨겨진 줄바꿈 기호(\n)를 눈에 보이게 표시해주면 디버깅이 훨씬 쉽습니다.
+                    const visibleText = data.extracted_text.replace(/\n/g, ' ↵\n');
+                    document.getElementById('rawText').textContent = visibleText;
+                    
+                    // 표 데이터는 구조를 보기 쉽게 JSON 형태로 출력
+                    document.getElementById('rawTableText').textContent = JSON.stringify(data.extracted_tables, null, 2);
+                    
+                    document.getElementById('resultSection').style.display = 'block';
+                } else {
+                    alert(`추출 실패: ${data.detail || data.message}`);
+                }
+            } catch (error) {
+                alert(`오류 발생: ${error.message}`);
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                input.value = ""; // 같은 파일 다시 선택 가능하게 초기화
+            }
+        }
+    </script>
+</body>
+</html>
