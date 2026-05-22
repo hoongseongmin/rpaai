@@ -49,6 +49,11 @@ async def pdf_test_page(request: Request):
     """PDF 추출 확인 페이지"""
     return templates.TemplateResponse(request=request, name="pdf_tester.html")
 
+@app.get("/templates-manager")
+async def templates_manager_page(request: Request):
+    """템플릿 현황 확인 페이지"""
+    return templates.TemplateResponse(request=request, name="template_manager.html")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

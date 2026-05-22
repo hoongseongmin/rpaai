@@ -17,6 +17,7 @@ router = APIRouter(prefix="/files", tags=["files"])
 BASE_DIR = Path(__file__).parent.parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 OUTPUT_DIR = BASE_DIR / "data" / "outputs"
+TEMPLATE_DIR = BASE_DIR / "data" / "templates"
 
 UPLOAD_DIR_COMPARE = UPLOAD_DIR / "compare"
 UPLOAD_DIR_STATUS = UPLOAD_DIR / "status"
@@ -24,6 +25,7 @@ UPLOAD_DIR_STATUS = UPLOAD_DIR / "status"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR_COMPARE.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR_STATUS.mkdir(parents=True, exist_ok=True)
+TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_upload_dir(task_type: str) -> Path:
@@ -41,6 +43,24 @@ async def list_files(task_type: str = "compare"):
                 "size": f.stat().st_size,
                 "created": datetime.fromtimestamp(f.stat().st_ctime).isoformat()
             })
+    return {"files": files}
+
+@router.get("/templates/list")
+async def list_templates():
+    """템플릿 폴더 내 파일 목록 조회"""
+    files = []
+    for f in TEMPLATE_DIR.rglob("*"):
+        if f.is_file():
+            rel_path = f.relative_to(TEMPLATE_DIR)
+            files.append({
+                "name": f.name,
+                "path": str(rel_path).replace("\\", "/"),
+                "folder": str(rel_path.parent).replace("\\", "/") if str(rel_path.parent) != "." else "최상위",
+                "size": f.stat().st_size,
+                "created": datetime.fromtimestamp(f.stat().st_ctime).isoformat()
+            })
+    # 폴더별(경로별)로 정렬
+    files.sort(key=lambda x: (x["folder"], x["name"]))
     return {"files": files}
 
 @router.get("/holidays")
@@ -100,7 +120,8 @@ async def process_file(
     customer: Optional[str] = None,
     files: Optional[List[UploadFile]] = File(None),
     filenames: Optional[List[str]] = Form(None),
-    options: Optional[str] = None
+    options: Optional[str] = None,
+    diff_filenames: Optional[List[str]] = Form(None)
 ):
     """파일 처리"""
     task_id = f"process_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -154,18 +175,50 @@ async def process_file(
             if not customer:
                 raise ValueError("문서를 생성할 고객사를 선택해야 합니다.")
             
-            # 문서 생성 작업은 대부분 1개의 기준 파일만 사용합니다.
-            if len(saved_paths) > 1:
-                raise ValueError("문서 생성을 위해서는 1개의 파일만 선택해야 합니다.")
-            diff_file = saved_paths[0] if saved_paths else None
+            diff_file = None
+            if diff_filenames:
+                # 💡 최종 생성 시, 무거운 재비교 작업 없이 이미 생성된 차이결과 파일을 즉시 재사용합니다.
+                diff_file = [OUTPUT_DIR / f for f in diff_filenames if (OUTPUT_DIR / f).exists()]
+            elif len(saved_paths) in [2, 4]:
+                diff_files = []
+                # 💡 첫 번째 그룹 즉석 비교
+                out_path1 = OUTPUT_DIR / f"차이결과_G1_{datetime.now().strftime('%H%M%S')}.xlsx"
+                result_info1 = compare_status_files(saved_paths[0], saved_paths[1], out_path1)
+                
+                # "차이점이 없습니다" 같은 상황에서는 파일이 안 만들어져도 에러 없이 정상 진행
+                if not result_info1.get("success") and "차이" not in result_info1.get("message", ""):
+                    raise ValueError(f"첫 번째 그룹 파일 비교 중 오류 발생: {result_info1.get('message', '알 수 없는 오류')}")
+                if out_path1.exists():
+                    diff_files.append(out_path1)
+
+                # 💡 두 번째 그룹 즉석 비교
+                if len(saved_paths) == 4:
+                    out_path2 = OUTPUT_DIR / f"차이결과_G2_{datetime.now().strftime('%H%M%S')}.xlsx"
+                    result_info2 = compare_status_files(saved_paths[2], saved_paths[3], out_path2)
+                    if not result_info2.get("success") and "차이" not in result_info2.get("message", ""):
+                        raise ValueError(f"두 번째 그룹 파일 비교 중 오류 발생: {result_info2.get('message', '알 수 없는 오류')}")
+                    if out_path2.exists():
+                        diff_files.append(out_path2)
+                
+                diff_file = diff_files
+            elif len(saved_paths) == 1:
+                diff_file = saved_paths[0]
+            elif len(saved_paths) > 0:
+                raise ValueError("문서 생성을 위해서는 1개(기존 결과), 2개(단일 그룹), 또는 4개(두 그룹)의 파일만 선택해야 합니다.")
             
             from src.automation.document_generator import generate_documents
             result_info = generate_documents(operation, customer, diff_file, OUTPUT_DIR, parsed_options)
             
             if result_info.get("success"):
                 outputs = result_info["output"]
+                
+                # 💡 입력된 파일이 여러 개(리스트)인지 1개인지 확인하여 이름 추출
+                if isinstance(diff_file, list):
+                    input_names = ", ".join([f.name for f in diff_file if hasattr(f, 'name')])
+                else:
+                    input_names = diff_file.name if diff_file else "자동 매칭(가장 최신 파일)"
+
                 if isinstance(outputs, list):
-                    input_names = ", ".join([f.name for f in diff_file]) if isinstance(diff_file, list) else "자동 매칭"
                     for out_path in outputs:
                         results.append({
                             "input": input_names,
@@ -174,7 +227,7 @@ async def process_file(
                         })
                 else:
                     results.append({
-                        "input": diff_file.name if diff_file else "자동 매칭(가장 최신 파일)",
+                        "input": input_names,
                         "output": outputs,
                         "summary": result_info.get("summary")
                     })

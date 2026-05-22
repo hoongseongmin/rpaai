@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPA/AI 자동화 플랫폼 - 템플릿 현황</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .folder-group { margin-bottom: 30px; }
+        .folder-title { 
+            font-size: 1.2em; 
+            font-weight: bold; 
+            color: var(--primary); 
+            margin-bottom: 15px; 
+            padding-bottom: 8px; 
+            border-bottom: 2px solid #e2e8f0; 
+        }
+        .template-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
+            gap: 15px; 
+        }
+        .template-card { 
+            background: #fff; 
+            border: 1px solid var(--border); 
+            border-radius: 6px; 
+            padding: 15px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
+            display: flex;
+            flex-direction: column;
+        }
+        .template-card .icon { font-size: 2em; margin-bottom: 10px; }
+        .template-card .name { font-weight: bold; margin-bottom: 8px; word-break: break-all; font-size: 1.05em; color: var(--text); }
+        .template-card .meta { font-size: 0.85em; color: var(--text-light); margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 (메뉴 활성화용) -->
+        {% set active_page = 'template_manager' %}
+        {% include 'header.html' %}
+
+        <!-- 메인 콘텐츠 -->
+        <main class="main">
+            <section class="card">
+                <h2>📂 서버 템플릿 목록 현황</h2>
+                <p style="color: var(--text-light); margin-bottom: 20px;">서버의 <code>data/templates/</code> 하위 폴더에 배치된 양식 및 설정 파일들을 실시간으로 보여줍니다.</p>
+                
+                <div id="templateContainer">
+                    <!-- 자바스크립트로 폴더별 카드가 렌더링됩니다. -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        async function loadTemplates() {
+            const container = document.getElementById('templateContainer');
+            container.innerHTML = '<p>템플릿 목록을 불러오는 중입니다...</p>';
+            try {
+                const response = await fetch('/files/templates/list');
+                const data = await response.json();
+                
+                if (!data.files || data.files.length === 0) {
+                    container.innerHTML = '<p>서버에 등록된 템플릿 파일이 없습니다.</p>';
+                    return;
+                }
+
+                // 폴더명(folder)을 기준으로 파일을 분류
+                const grouped = {};
+                data.files.forEach(f => {
+                    if (!grouped[f.folder]) grouped[f.folder] = [];
+                    grouped[f.folder].push(f);
+                });
+
+                let html = '';
+                for (const [folder, files] of Object.entries(grouped)) {
+                    html += `<div class="folder-group"><div class="folder-title">📁 ${folder}</div><div class="template-grid">`;
+                    files.forEach(f => {
+                        let icon = '📄';
+                        if (f.name.endsWith('.xlsx')) icon = '📊';
+                        if (f.name.endsWith('.docx')) icon = '📝';
+                        html += `<div class="template-card"><div class="icon">${icon}</div><div class="name">${f.name}</div><div class="meta"><b>크기:</b> ${(f.size / 1024).toFixed(1)} KB</div><div class="meta"><b>경로:</b> ${f.path}</div></div>`;
+                    });
+                    html += `</div></div>`;
+                }
+                container.innerHTML = html;
+            } catch (error) { container.innerHTML = `<div class="error">오류: ${error.message}</div>`; }
+        }
+        document.addEventListener('DOMContentLoaded', loadTemplates);
+    </script>
+</body>
+</html>
