@@ -6,24 +6,27 @@ window.CustomerManager = {
     // 1. 등록된 고객사 목록
     customers: [
         // === 월간 청구 대상 ===
-        { value: "koreapost", name: "우정사업본부" },
+        { value: "hanabank", name: "하나은행" },
+        { value: "koreapost", name: "우정사업본부 (완료)" },
         { value: "hanwhagalleria", name: "한화갤러리아" },
         { value: "nice_emarthdc", name: "나이스씨엠에스 이마트신세계HDC" },
         { value: "nice_lotte", name: "나이스씨엠에스 롯데백화점" },
         { value: "nice_hyundai", name: "나이스씨엠에스 현대백화점" },
-        { value: "nice_ibk", name: "나이스씨엠에스 기업은행한남동" },
+        { value: "nice_ibk", name: "나이스씨엠에스 기업은행한남동 (완료)" },
         { value: "nice_lottemobile", name: "나이스씨엠에스 롯데백화점모바일상품권" },
-        { value: "shinhyup", name: "신협" },
+        { value: "hannet_glory", name: "한네트 글로리 (완료)" },
+        { value: "hannet_atm", name: "한네트 자동화기기(청구공문완료)" },
+        { value: "shinhyup", name: "신협 (완료)" },
         // === 분기별 청구 대상 ===
         { value: "scbank", name: "SC은행", isQuarterly: true },
-        { value: "shinhancard", name: "신한카드", isQuarterly: true },
-        { value: "hanwha", name: "한화손해보험", isQuarterly: true }
+        { value: "shinhancard", name: "신한카드(완료)", isQuarterly: true },
+        { value: "hanwhainsure", name: "한화손해보험", isQuarterly: true }
     ],
 
     // 2. 기본/고객사별 설정 (월 계산 오프셋, 공문번호 노출 여부 등)
     getConfig: function(customerValue) {
         const baseCustomer = this.getBaseCustomer(customerValue);
-        const customerInfo = this.customers.find(c => c.value === baseCustomer) || {};
+        const customerInfo = this.customers.find(c => c.value === customerValue) || this.customers.find(c => c.value === baseCustomer) || {};
         
         let config = { 
             monthOffset: 0, 
@@ -34,13 +37,15 @@ window.CustomerManager = {
         if (baseCustomer === 'koreapost') {
             config.monthOffset = -1; // 우체국은 청구연월이 항상 1달 전 기준
             config.showDocNum = false;
+        } else if (customerValue === 'hannet_glory') {
+            config.showDocNum = false; // 한네트 글로리 공문번호 숨김 (자동화기기는 노출)
         }
         return config;
     },
 
     getBaseCustomer: function(customer) {
         if (!customer) return '';
-        return customer.startsWith('nice_') ? customer.split('_').slice(0, 2).join('_') : customer.split('_')[0];
+        return (customer.startsWith('nice_') || customer.startsWith('hannet_')) ? customer.split('_').slice(0, 2).join('_') : customer.split('_')[0];
     },
 
     initSelectBox: function(selectId) {
@@ -52,10 +57,13 @@ window.CustomerManager = {
         let quarterlyHtml = '<optgroup label="[ 분기별 청구 대상 ]">';
         
         this.customers.forEach(c => { 
+            const isCompleted = c.name.includes('완료');
+            const style = isCompleted ? 'style="background-color: #e8f5e9; color: #1e8449; font-weight: bold;"' : '';
+
             if (c.isQuarterly) {
-                quarterlyHtml += `<option value="${c.value}">🔹 ${c.name} (분기)</option>`;
+                quarterlyHtml += `<option value="${c.value}" ${style}>🔹 ${c.name} (분기)</option>`;
             } else {
-                monthlyHtml += `<option value="${c.value}">${c.name}</option>`;
+                monthlyHtml += `<option value="${c.value}" ${style}>${c.name}</option>`;
             }
         });
         
@@ -103,14 +111,14 @@ window.CustomerManager = {
 
         if (task.op === 'kp_task5') {
             return `<tr>
-                <td style="font-weight: bold; font-size: 1.05em; vertical-align: middle;">
+                <td style="padding: 10px 15px; font-weight: bold; font-size: 1.05em; vertical-align: middle;">
                     <label style="cursor: pointer; display: flex; align-items: center; margin: 0;">${checkboxHtml} <span>${task.title}</span></label>
                     <span style="font-size: 0.85em; color: var(--text-light); font-weight: normal; margin-left: 26px; display: block;">- 국세/지방세 납세증명, 4대보험 완납증명 직접 발급 링크</span>
                 </td>
-                <td style="text-align: center; vertical-align: middle;">
+                <td style="padding: 10px 15px; text-align: center; vertical-align: middle;">
                     <div style="display: flex; justify-content: center; gap: 8px;">
-                        <a href="https://plus.gov.kr/" target="_blank" class="btn" style="font-size: 0.9em; padding: 8px 15px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0; text-decoration: none; font-weight: bold; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--primary)';" onmouseout="this.style.borderColor='#e2e8f0';">🏛️ 정부24</a>
-                        <a href="https://si4n.nhis.or.kr/jpba/JpBaa00101.do" target="_blank" class="btn" style="font-size: 0.9em; padding: 8px 15px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0; text-decoration: none; font-weight: bold; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--primary)';" onmouseout="this.style.borderColor='#e2e8f0';">🏥 징수포털</a>
+                        <a href="https://plus.gov.kr/" target="_blank" class="btn" style="font-size: 0.85em; padding: 4px 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0; text-decoration: none; font-weight: bold; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--primary)';" onmouseout="this.style.borderColor='#e2e8f0';">정부24</a>
+                        <a href="https://si4n.nhis.or.kr/jpba/JpBaa00101.do" target="_blank" class="btn" style="font-size: 0.85em; padding: 4px 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0; text-decoration: none; font-weight: bold; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--primary)';" onmouseout="this.style.borderColor='#e2e8f0';">징수포털</a>
                     </div>
                 </td>
             </tr>`;
@@ -135,15 +143,24 @@ window.CustomerManager = {
                 </td>
             </tr>`;
         }
+        if (task.op === 'check_simple') {
+            return `<tr style="background: #fdf5f0; border-bottom: 2px solid #fff;">
+                <td colspan="2" style="padding: 10px 15px; vertical-align: middle;">
+                    <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400;">
+                        ${checkboxHtml} <span style="white-space: nowrap;">${task.title}</span>
+                    </label>
+                </td>
+            </tr>`;
+        }
         return `<tr>
-            <td style="font-weight: bold; font-size: 1.05em; vertical-align: middle;">
+            <td style="padding: 10px 15px; font-weight: bold; font-size: 1.05em; vertical-align: middle;">
                 <label style="cursor: pointer; display: flex; align-items: center; margin: 0;">${checkboxHtml} <span>${task.title}</span></label>
             </td>
-            <td style="text-align: center; vertical-align: middle;">
+            <td style="padding: 10px 15px; text-align: center; vertical-align: middle;">
                 <div style="display: flex; justify-content: center; gap: 8px;">
-                    <button class="btn btn-primary" style="font-size: 0.9em; padding: 8px 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onclick="fastGenerate('${task.op === 'doc_official' ? task.id : customer}', '${task.op}', this)">⚡ 바로 생성</button>
-                    <a href="#" class="btn dl-btn" style="font-size: 0.9em; padding: 8px 15px; background: #e2e8f0; color: #94a3b8; cursor: not-allowed; pointer-events: none; text-decoration: none;">⬇️ 다운로드</a>
-                    <a href="#" class="btn pdf-btn" style="font-size: 0.9em; padding: 8px 15px; background: #e2e8f0; color: #94a3b8; cursor: not-allowed; pointer-events: none; text-decoration: none;">📄 PDF 변환</a>
+                    <button class="btn btn-primary" style="font-size: 0.85em; padding: 4px 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onclick="fastGenerate('${task.id}', '${task.op}', this)">바로 생성</button>
+                    <a href="#" class="btn dl-btn" style="font-size: 0.85em; padding: 4px 10px; background: #e2e8f0; color: #94a3b8; cursor: not-allowed; pointer-events: none; text-decoration: none;">다운로드</a>
+                    <a href="#" class="btn pdf-btn" style="font-size: 0.85em; padding: 4px 10px; background: #e2e8f0; color: #94a3b8; cursor: not-allowed; pointer-events: none; text-decoration: none;">PDF 변환</a>
                 </div>
             </td>
         </tr>`;

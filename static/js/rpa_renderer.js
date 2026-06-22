@@ -6,14 +6,22 @@ window.RpaRenderer = {
     // 1. 고객사 ID에서 베이스 고객사 추출
     getBaseCustomer: function(customer) {
         if (!customer) return '';
-        return customer.startsWith('nice_') ? customer.split('_').slice(0, 2).join('_') : customer.split('_')[0];
+        return (customer.startsWith('nice_') || customer.startsWith('hannet_')) ? customer.split('_').slice(0, 2).join('_') : customer.split('_')[0];
+    },
+
+    getCustomerModule: function(customer) {
+        const base = this.getBaseCustomer(customer);
+        if (window.RPA_CUSTOMERS) {
+            return window.RPA_CUSTOMERS[base] || window.RPA_CUSTOMERS[customer.split('_')[0]];
+        }
+        return null;
     },
 
     // 2. 엑셀 백그라운드 데이터 로드 후 연산 트리거 (oneclick.html)
     onBackgroundDataLoaded: function(customer, targetInputKey) {
-        const baseCustomer = this.getBaseCustomer(customer);
-        if (window.RPA_CUSTOMERS && window.RPA_CUSTOMERS[baseCustomer] && window.RPA_CUSTOMERS[baseCustomer].onBackgroundLoaded) {
-            window.RPA_CUSTOMERS[baseCustomer].onBackgroundLoaded(targetInputKey);
+        const module = this.getCustomerModule(customer);
+        if (module && module.onBackgroundLoaded) {
+            module.onBackgroundLoaded(targetInputKey);
         } else {
             // 기본 로직
             if (targetInputKey === '월유지비용' && typeof calculateActualPayment === 'function') calculateActualPayment();
@@ -23,9 +31,9 @@ window.RpaRenderer = {
 
     // 3. PDF 추출 후 연산 트리거 (rpa_dashboard.html, oneclick.html)
     onPdfExtracted: function(customer) {
-        const baseCustomer = this.getBaseCustomer(customer);
-        if (window.RPA_CUSTOMERS && window.RPA_CUSTOMERS[baseCustomer] && window.RPA_CUSTOMERS[baseCustomer].onPdfExtracted) {
-            window.RPA_CUSTOMERS[baseCustomer].onPdfExtracted();
+        const module = this.getCustomerModule(customer);
+        if (module && module.onPdfExtracted) {
+            module.onPdfExtracted();
         } else {
             // 기본 로직
             if (typeof calculateSatisfaction === 'function') calculateSatisfaction();
@@ -38,9 +46,9 @@ window.RpaRenderer = {
 
     // 4. 대시보드 렌더링 직후 초기화 연산 트리거
     onDashboardRendered: function(context, operation, customer) {
-        const baseCustomer = this.getBaseCustomer(customer);
-        if (window.RPA_CUSTOMERS && window.RPA_CUSTOMERS[baseCustomer] && window.RPA_CUSTOMERS[baseCustomer].onDashboardRendered) {
-            window.RPA_CUSTOMERS[baseCustomer].onDashboardRendered(context, operation, customer);
+        const module = this.getCustomerModule(customer);
+        if (module && module.onDashboardRendered) {
+            module.onDashboardRendered(context, operation, customer);
         } else {
             const totalInput = document.getElementById('input_total');
             if (totalInput && typeof calculateVAT === 'function') calculateVAT(totalInput);
@@ -80,7 +88,10 @@ window.RpaRenderer = {
                 return `<input type="text" class="edit-input money-input" ${extraId} data-key="${key}" value="${value}" placeholder="자동 계산됨" oninput="${oninputStr}" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-weight: bold; background-color: #fafafa;" ${key !== '공급가액' ? 'readonly' : ''}>`;
             } else if (['합계금액', '당초청구금액', '정산감액', '미사용차감수량', '미사용차감금액'].includes(key)) {
                 let oninputStr = "formatMoney(this)";
-                if (key === '합계금액') oninputStr += "; calculateVAT(this);";
+                if (key === '합계금액') {
+                    oninputStr += "; calculateVAT(this);";
+                    if (operation === 'kp_task3') oninputStr += " const t=document.querySelector('input[data-key=\"당초청구금액\"]'); if(t){t.value=this.value; calculateClaimAmount();}";
+                }
                 else if (key === '당초청구금액' || key === '정산감액') oninputStr += "; calculateClaimAmount();";
                 else if (key === '미사용차감금액') oninputStr += "; calculateActualPayment();";
                 let extraId = key === '합계금액' ? 'id="input_total"' : '';

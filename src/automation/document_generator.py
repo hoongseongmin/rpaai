@@ -5,6 +5,7 @@ import zipfile
 import os
 import re
 import json
+import importlib
 from docxtpl import DocxTemplate
 from typing import Union, List
 
@@ -17,35 +18,26 @@ def generate_documents(operation: str, customer: str, diff_file_path: Union[Path
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     options = options or {}
     
-    # 1. 차이결과 엑셀 자동 매칭
-    if not diff_file_path:
-        if operation not in ['doc_official', 'doc_convert_pdf', 'kp_task3', 'kp_task4']:
-            diff_file_path = get_latest_diff_file(output_dir)
-            if not diff_file_path:
-                return {"success": False, "message": "비교가 완료된 엑셀 파일을 찾을 수 없습니다. [파일 처리] 메뉴에서 운영현황 비교를 먼저 1회 실행해주세요."}
+    # 1. 차이결과 엑셀 자동 매칭 (비교 결과가 필요한 작업을 위한 폴백)
+    if not diff_file_path and operation != 'doc_convert_pdf':
+        diff_file_path = get_latest_diff_file(output_dir)
 
-    # 💡 2. 고객사 모듈 라우팅 (우정사업본부)
-    if customer.startswith('koreapost') and operation in ['doc_official', 'kp_task3', 'kp_task4']:
-        from .customers.koreapost import process_koreapost
-        return process_koreapost(operation, customer, diff_file_path, output_dir, options)
-
-    # 💡 2-2. 고객사 모듈 라우팅 (나이스CMS 그룹)
+    # 💡 2. 고객사 개별 모듈 동적 라우팅
     if operation != 'doc_convert_pdf':
-        if customer.startswith('nice_ibk'):
-            from .customers.nice_ibk import process_nice_ibk
-            return process_nice_ibk(operation, customer, diff_file_path, output_dir, options)
-        elif customer.startswith('nice_emarthdc'):
-            from .customers.nice_emarthdc import process_nice_emarthdc
-            return process_nice_emarthdc(operation, customer, diff_file_path, output_dir, options)
-        elif customer.startswith('nice_lotte') and not customer.startswith('nice_lottemobile'):
-            from .customers.nice_lotte import process_nice_lotte
-            return process_nice_lotte(operation, customer, diff_file_path, output_dir, options)
-        elif customer.startswith('nice_lottemobile'):
-            from .customers.nice_lottemobile import process_nice_lottemobile
-            return process_nice_lottemobile(operation, customer, diff_file_path, output_dir, options)
-        elif customer.startswith('nice_hyundai'):
-            from .customers.nice_hyundai import process_nice_hyundai
-            return process_nice_hyundai(operation, customer, diff_file_path, output_dir, options)
+        base_module_name = customer.split('_')[0]
+        if customer.startswith('nice_'):
+            parts = customer.split('_')
+            if len(parts) >= 2: base_module_name = f"{parts[0]}_{parts[1]}"
+        elif customer.startswith('hannet_'):
+            base_module_name = 'hannet'
+            
+        try:
+            module = importlib.import_module(f".customers.{base_module_name}", package="src.automation")
+            process_func = getattr(module, f"process_{base_module_name}", None)
+            if process_func:
+                return process_func(operation, customer, diff_file_path, output_dir, options)
+        except ImportError:
+            pass # 개별 모듈이 없는 경우 범용 공문 생성 로직으로 넘어감
 
     # 💡 3. PDF 공통 변환 로직 (버튼 클릭 시 실행)
     if operation == 'doc_convert_pdf':
@@ -73,9 +65,50 @@ def generate_documents(operation: str, customer: str, diff_file_path: Union[Path
                     excel = win32com.client.DispatchEx("Excel.Application")
                     excel.Visible = False
                     excel.DisplayAlerts = False
+                    abs_file_path = str(file_path.absolute())
+                    abs_pdf_path = str(pdf_path.absolute())
                     wb = excel.Workbooks.Open(abs_file_path)
-                    # 0은 Excel에서 PDF 형식(xlTypePDF)을 의미합니다.
-                    wb.ExportAsFixedFormat(0, abs_pdf_path)
+                    
+                    # 💡 "통합" 생성된 엑셀 파일일 경우, 시트별로 분할하여 PDF로 만들고 ZIP으로 압축
+                    if "통합" in file_path.name and wb.Sheets.Count > 1:
+                        zip_filename = file_path.with_suffix('.zip').name
+                        zip_path = output_dir / zip_filename
+                        
+                        # 💡 파일명에서 연도와 월 추출 (예: 2026년02월분)
+                        date_match = re.search(r'\((\d{4})년(\d{2})월분\)', file_path.name)
+                        target_year = date_match.group(1) if date_match else "YYYY"
+                        target_month = date_match.group(2) if date_match else "MM"
+                        short_year = target_year[-2:] if len(target_year) == 4 else "YY"
+                        
+                        # 💡 요청하신 시트 순서별 맞춤 파일명 지정
+                        custom_names = {
+                            1: f"공문_금융자동화기기(Ⅱ) 유지관리용역 이전설치 완료통보의 건({target_year}년{target_month}월분)",
+                            2: f"공문_금융자동화기기(Ⅱ) 유지관리용역 {short_year}.{target_month}월 이행실적 검사요청",
+                            3: f"청구공문_금융자동화기기(Ⅱ) 유지관리용역 이전실비({target_year}년{target_month}월분)",
+                            4: f"청구공문_금융자동화기기(Ⅱ) 유지관리용역 유지보수료({target_year}년{target_month}월분)"
+                        }
+
+                        pdf_files = []
+                        for i in range(1, wb.Sheets.Count + 1):
+                            sheet = wb.Sheets(i)
+                            base_pdf_name = custom_names.get(i, sheet.Name)
+                            safe_sheet_name = re.sub(r'[\\/*?:"<>|]', "", base_pdf_name)
+                            pdf_name = f"{safe_sheet_name}.pdf"
+                            pdf_temp_path = output_dir / pdf_name
+                            sheet.ExportAsFixedFormat(0, str(pdf_temp_path.absolute()))
+                            pdf_files.append(pdf_temp_path)
+                            
+                        with zipfile.ZipFile(str(zip_path.absolute()), 'w', zipfile.ZIP_DEFLATED) as zipf:
+                            for p_file in pdf_files: zipf.write(p_file, arcname=p_file.name)
+                                
+                        for p_file in pdf_files:
+                            try: os.remove(p_file)
+                            except: pass
+                            
+                        return {"success": True, "output": zip_filename, "summary": {"message": "4개 시트가 개별 PDF로 분할되어 압축(ZIP) 완료되었습니다."}}
+                    else:
+                        # 0은 Excel에서 PDF 형식(xlTypePDF)을 의미합니다.
+                        wb.ExportAsFixedFormat(0, abs_pdf_path)
                 finally:
                     if wb: wb.Close(False)
                     if excel: excel.Quit()
@@ -100,7 +133,7 @@ def generate_documents(operation: str, customer: str, diff_file_path: Union[Path
         try:
             df_settings = pd.read_excel(excel_path, dtype=str)
             base_customer = customer.split('_')[0]
-            if customer.startswith('nice_'):
+            if customer.startswith('nice_') or customer.startswith('hannet_'):
                 parts = customer.split('_')
                 base_customer = f"{parts[0]}_{parts[1]}" if len(parts) >= 2 else customer
                 

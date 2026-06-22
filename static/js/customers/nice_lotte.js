@@ -4,13 +4,12 @@ window.RPA_CUSTOMERS['nice_lotte'] = {
     monthOffset: 0, // 나이스씨엠에스는 전월(-1)이 아닌 당월(0) 기준
     tasks: [
         // 💡 원래 작성하셨던(또는 원하시는) 작업 목록을 여기에 넣어주세요!
-        { id: 'nice_lotte_1', op: 'doc_official', title: '1. 📝 청구공문 생성 (Word)', date: '매월 초' },
-        { id: 'nice_lotte_2', op: 'doc_official', title: '2. 📝 두번째 작업 입력', date: '매월 초' },
-        { id: 'nice_lotte_3', op: 'doc_official', title: '3. 📊 세번째 작업 입력', date: '매월 초' },
-        { id: 'nice_lotte_4', op: 'doc_official', title: '4. 📊 네번째 작업 입력', date: '매월 초' },
-        { id: 'nice_lotte_5', op: 'doc_official', title: '5. 📝 다섯번째 작업 입력', date: '매월 초' },
-        { id: 'nice_lotte_6', op: 'doc_official', title: '6. 📝 여섯번째 작업 입력', date: '매월 초' },
-        { id: 'nice_lotte_7', op: 'doc_official', title: '7. 📝 일곱번째 작업 입력', date: '매월 초' }
+        { id: 'nice_lotte_1', op: 'doc_excel', title: '1.유지보수료 리스트 작성(Excel)', date: '매월 초' },
+        { id: 'nice_lotte_2', op: 'doc_official', title: '2.청구공문 생성 (Word)', date: '매월 초' },
+        { id: 'nice_lotte_3', op: 'doc_excel', title: '붙임_1.정산기_청구현황 (Excel)', date: '매월 초' },
+        { id: 'nice_lotte_4', op: 'doc_excel', title: '붙임_2.정산기_지점별 발행리스트 (Excel)', date: '매월 초' },
+        { id: 'nice_lotte_5', op: 'doc_excel', title: '붙임_3.정산기_휴일지원내역(Excel)', date: '매월 초' },
+        { id: 'nice_lotte_6', op: 'check_simple', title: '붙임_4.세금계산서', date: '매월 초' }
     ],
     
     renderOneclick: function(savedData) {

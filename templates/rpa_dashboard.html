@@ -272,6 +272,12 @@
     <script src="/static/js/customers/nice_emarthdc.js"></script>
     <script src="/static/js/customers/nice_lottemobile.js"></script>
     <script src="/static/js/customers/shinhyup.js"></script>
+    <script src="/static/js/customers/hanabank.js"></script>
+    <script src="/static/js/customers/hannet.js"></script>
+    <script src="/static/js/customers/hanwhagalleria.js"></script>
+    <script src="/static/js/customers/shinhancard.js"></script>
+    <script src="/static/js/customers/scbank.js"></script>
+    <script src="/static/js/customers/hanwhainsure.js"></script>
     <script>
 
         // 계산기 Alias 등록 (HTML 인라인 이벤트 호환용)
@@ -348,23 +354,26 @@
             
             const total = tasks.length;
             
-            const allCheckOnly = tasks.every(t => t.op === 'check_only');
+            const allCheckOnly = tasks.every(t => t.op === 'check_only' || t.op === 'check_simple');
             
             // 💡 고객사별 청구연월 기준 달 설정
-            const config = CustomerManager.getConfig(baseCustomer);
+            const config = CustomerManager.getConfig(customer);
             const today = new Date();
             const targetDate = new Date(today.getFullYear(), today.getMonth() + config.monthOffset, 1);
             
-            let cachedMonth = null;
-            let cachedDate = null;
             let cachedDocNum = null;
             try {
                 const stored = localStorage.getItem(`rpaCommonData_${baseCustomer}`);
                 if (stored) {
                     const parsed = JSON.parse(stored);
-                    if (parsed['청구연월']) cachedMonth = parsed['청구연월'];
-                    if (parsed['작성일자']) cachedDate = parsed['작성일자'];
                     if (parsed['공문번호']) cachedDocNum = parsed['공문번호'];
+                    
+                    // 💡 과거에 잘못 저장된 날짜가 로컬에 남아있다면 영구 삭제(청소)합니다.
+                    if (parsed['청구연월'] || parsed['작성일자']) {
+                        delete parsed['청구연월'];
+                        delete parsed['작성일자'];
+                        localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify(parsed));
+                    }
                 }
             } catch(e) {}
             
@@ -377,12 +386,12 @@
             if (config.isQuarterly) {
                 if (monthLabel) monthLabel.innerText = '청구분기';
                 const currentQuarter = Math.ceil((today.getMonth() + 1) / 3);
-                if (monthInput) monthInput.value = cachedMonth || `${today.getFullYear()}년 ${currentQuarter}분기`;
+                if (monthInput) monthInput.value = `${today.getFullYear()}년 ${currentQuarter}분기`;
             } else {
                 if (monthLabel) monthLabel.innerText = '청구연월';
-                if (monthInput) monthInput.value = cachedMonth || `${targetDate.getFullYear()}년 ${String(targetDate.getMonth() + 1).padStart(2, '0')}월`;
+                if (monthInput) monthInput.value = `${targetDate.getFullYear()}년 ${String(targetDate.getMonth() + 1).padStart(2, '0')}월`;
             }
-            if (dateInput) dateInput.value = cachedDate || `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월 ${String(today.getDate()).padStart(2, '0')}일`;
+            if (dateInput) dateInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월 ${String(today.getDate()).padStart(2, '0')}일`;
             
             // 💡 우체국(koreapost)이 아닌 모든 고객사에서 공문번호를 표시합니다
             if (config.showDocNum) {
@@ -417,6 +426,9 @@
             
             let savedChecks = {};
             try { savedChecks = JSON.parse(localStorage.getItem(`rpa_checks_${baseCustomer}`) || '{}'); } catch(e) {}
+            
+            let savedData = {};
+            try { savedData = JSON.parse(localStorage.getItem(`rpaCommonData_${baseCustomer}`) || '{}'); } catch(e) {}
 
             // 3. 데이터를 바탕으로 HTML 표(반복문)를 뚝딱 그려냅니다.
             tbody.innerHTML = tasks.map(task => {
@@ -428,13 +440,30 @@
                     <tr style="background: #fdf5f0; border-bottom: 2px solid #fff;">
                         <td colspan="4" style="padding: 10px 15px; vertical-align: middle;">
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px;">
-                                <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400; flex: 1;"><input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); margin-right: 10px;"><span style="white-space: nowrap;">${task.title}</span></label>
+                                <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400; flex: 1;">
+                                    <input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); margin-right: 10px;">
+                                    <span style="white-space: nowrap;">${task.title}</span>
+                                </label>
                                 <div style="display: flex; align-items: center; gap: 10px; flex: 2; justify-content: flex-end;">
                                     <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">공급가액</span><input type="text" id="${task.id}_supply" class="check-input" data-task="${task.id}" data-type="공급가액" value="${tSupply}" oninput="formatMoney(this); RpaCalculator.calculateFromSupply(this, '${task.id}_total', '${task.id}_vat'); window.saveCheckData('${baseCustomer}')" style="width: 110px; padding: 6px; border: 1px solid #fce4d6; border-radius: 4px; font-weight: bold; text-align: right; background: #fff;"></div>
-                                    <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">부가세</span><input type="text" id="${task.id}_vat" class="check-input" data-task="${task.id}" data-type="부가세" value="${tVat}" 
+                                    <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">부가세</span><input type="text" id="${task.id}_vat" class="check-input" data-task="${task.id}" data-type="부가세" value="${tVat}" placeholder="자동계산" readonly style="width: 90px; padding: 6px; border: 1px solid #fadbd8; border-radius: 4px; background: #fffcfb; color: #888; font-weight: bold; text-align: right;"></div>
+                                    <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">합계금액</span><input type="text" id="${task.id}_total" class="check-input" data-task="${task.id}" data-type="합계금액" value="${tTotal}" placeholder="자동계산" readonly style="width: 110px; padding: 6px; border: 1px solid #fadbd8; border-radius: 4px; background: #fffcfb; color: #888; font-weight: bold; text-align: right;"></div>
+                                </div>
+                            </div>
+                        </td>
                     </tr>`;
-                } else {
-                    return `<tr><td>${task.title}</td><td>${task.date}</td><td><input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); cursor: pointer;"></td><td><button class="btn btn-primary" onclick="executeTask('${task.op === 'doc_official' ? task.id : customer}', '${task.op}')">생성 실행</button></td></tr>`;
+                } else if (task.op === 'check_simple') {
+                    return `
+                    <tr style="background: #fdf5f0; border-bottom: 2px solid #fff;">
+                        <td colspan="4" style="padding: 10px 15px; vertical-align: middle;">
+                            <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400;">
+                                <input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); margin-right: 10px;">
+                                <span style="white-space: nowrap;">${task.title}</span>
+                            </label>
+                        </td>
+                    </tr>`;
+                } else {                    
+                    return `<tr><td>${task.title}</td><td>${task.date}</td><td><input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); cursor: pointer;"></td><td><button class="btn btn-primary" onclick="executeTask('${task.id}', '${task.op}')">생성 실행</button></td></tr>`;
                 }
             }).join('');
             
@@ -461,6 +490,12 @@
         let currentTaskOperation = '';
 
         function executeTask(customer, operation, overrides = null, isRefreshing = false) {
+            // 💡 안전 장치: UI에서 'koreapost' 로 넘어온 경우 올바른 작업 ID로 매핑
+            if (customer === 'koreapost' && operation.startsWith('kp_task') && operation !== 'kp_task5') {
+                const taskNum = operation.replace('kp_task', '');
+                customer = `koreapost_${taskNum}`;
+            }
+
             // 💡 5번 제증명 서류 3종 작업은 파이썬 로딩 대신 '특별 가이드 UI' 즉시 렌더링
             if (CustomerManager.isGuideTask(operation)) {
                 renderCertificateGuideUI();
@@ -475,7 +510,7 @@
 
             const formData = new FormData();
             const optionsObj = {
-                preview_only: (operation === 'doc_official' || operation.startsWith('kp_task') || operation === 'nice_emarthdc_2'),
+                preview_only: (operation !== 'kp_task_all' && (operation === 'doc_official' || operation.startsWith('kp_task') || operation === 'nice_emarthdc_2')),
                 billing_amount: "",
                 doc_number: ""
             };

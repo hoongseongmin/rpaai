@@ -135,10 +135,11 @@ async def process_file(
     try:
         if files:
             for file in files:
-                file_path = target_dir / file.filename
-                with open(file_path, "wb") as buffer:
-                    shutil.copyfileobj(file.file, buffer)
-                saved_paths.append(file_path)
+                if file.filename:  # 파일이 실제로 선택된 경우에만 작동하도록 방어
+                    file_path = target_dir / file.filename
+                    with open(file_path, "wb") as buffer:
+                        shutil.copyfileobj(file.file, buffer)
+                    saved_paths.append(file_path)
                 
         if filenames:
             for fname in filenames:
@@ -146,7 +147,7 @@ async def process_file(
                 if file_path.exists() and file_path not in saved_paths:
                     saved_paths.append(file_path)
                     
-        if not saved_paths and not (operation.startswith("doc_") or operation.startswith("kp_") or operation.startswith("nice_")):
+        if not saved_paths and not (operation.startswith("doc_") or operation.startswith("kp_") or operation.startswith("nice_") or operation.startswith("hanabank_")):
             raise ValueError("처리할 파일을 선택하거나 업로드해주세요. (기준 파일이 필요합니다)")
             
         # 작업에 맞지 않는 파일 확장자 방어 코드
@@ -171,7 +172,7 @@ async def process_file(
             else:
                 return {"task_id": task_id, "status": "completed", "message": result_info.get("message", "차이점이 없습니다."), "results": []}
 
-        elif operation.startswith("doc_") or operation.startswith("kp_") or operation.startswith("nice_"):
+        elif operation.startswith("doc_") or operation.startswith("kp_") or operation.startswith("nice_") or operation.startswith("hanabank_"):
             if not customer:
                 raise ValueError("문서를 생성할 고객사를 선택해야 합니다.")
             

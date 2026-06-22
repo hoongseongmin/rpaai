@@ -1,20 +1,10 @@
-const customerTasks = {
-    'koreapost': [
-        { id: 'koreapost_1', op: 'doc_official', title: '1. 📝 이전설치 공문 (Word)', date: '매월 5일' },
-        { id: 'koreapost_2', op: 'doc_official', title: '2. 📝 이행실적 공문 (Word)', date: '매월 5일' },
-        { id: 'koreapost_3', op: 'kp_task3', title: '3. 📊 이전실비 청구서 (Excel)', date: '매월 10일' },
-        { id: 'koreapost_4', op: 'kp_task4', title: '4. 📊 유지보수료 청구서 (Excel)', date: '매월 10일' },
-        { id: 'koreapost',   op: 'kp_task5', title: '5. 제증명 서류 3종 <br><span style="font-size: 0.85em; color: var(--text-light);">- 국세/지방세/4대보험</span>', date: '매월 10일' }
-    ]
-};
-
 // 💡 페이지 로딩이 완벽히 끝난 후 안전하게 초기 날짜(이번 달/오늘) 세팅
 function setInitialDates() {
     const today = new Date();
     const monthInput = document.getElementById('global_month');
     const dateInput = document.getElementById('global_date');
-    if (monthInput && !monthInput.value) monthInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월`;
-    if (dateInput && !dateInput.value) dateInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월 ${String(today.getDate()).padStart(2, '0')}일`;
+    if (monthInput) monthInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월`;
+    if (dateInput) dateInput.value = `${today.getFullYear()}년 ${String(today.getMonth() + 1).padStart(2, '0')}월 ${String(today.getDate()).padStart(2, '0')}일`;
 }
 
 if (document.readyState === 'loading') {
@@ -28,15 +18,19 @@ document.getElementById('task_customer').addEventListener('change', function() {
     const tbody = document.getElementById('checklistBody');
     const progressSummary = document.getElementById('progressSummary');
     
-    const tasks = customerTasks[customer] || [{ id: customer, op: 'doc_official', title: '1. 📝 맞춤형 공문 생성 (Word)', date: '상시' }];
+    const module = typeof RpaRenderer !== 'undefined' ? RpaRenderer.getCustomerModule(customer) : null;
+    const tasks = (module && module.tasks) ? module.tasks : [{ id: customer, op: 'doc_official', title: '1. 📝 맞춤형 공문 생성 (Word)', date: '상시' }];
     const total = tasks.length;
 
     // 💡 고객사별 청구연월 기준 달 설정
-    const baseCustomer = customer.split('_')[0];
-    const monthOffsetMap = {
-        'koreapost': -1, 'nice_ibk': 0, 'nice_emart': 0, 'nice_lotte': 0, 'nice_hyundai': 0, 'nice_hdc': 0
-    };
-    const offset = monthOffsetMap[baseCustomer] !== undefined ? monthOffsetMap[baseCustomer] : -1;
+    const baseCustomer = typeof RpaRenderer !== 'undefined' ? RpaRenderer.getBaseCustomer(customer) : customer.split('_')[0];
+    let offset = -1;
+    if (typeof CustomerManager !== 'undefined') {
+        offset = CustomerManager.getConfig(customer).monthOffset;
+    } else if (typeof RpaRenderer !== 'undefined') {
+        const module = RpaRenderer.getCustomerModule(customer);
+        if (module && module.monthOffset !== undefined) offset = module.monthOffset;
+    }
     
     const today = new Date();
     const targetDate = new Date(today.getFullYear(), today.getMonth() + offset, 1);
@@ -71,14 +65,52 @@ document.getElementById('task_customer').addEventListener('change', function() {
     document.getElementById('progressBar').style.width = '0%';
     document.getElementById('progressText').innerText = `0 / ${total} 완료 (0%)`;
     
-    tbody.innerHTML = tasks.map(task => `
-        <tr>
-            <td>${task.title}</td>
-            <td>${task.date}</td>
-            <td><input type="checkbox" onchange="updateProgress(${total})"></td>
-            <td><button class="btn btn-primary" onclick="executeTask('${task.op === 'doc_official' ? task.id : customer}', '${task.op}')">생성 실행</button></td>
-        </tr>
-    `).join('');
+    let savedChecks = {};
+    try { savedChecks = JSON.parse(localStorage.getItem(`rpa_checks_${baseCustomer}`) || '{}'); } catch(e) {}
+
+    let savedData = {};
+    try { savedData = JSON.parse(localStorage.getItem(`rpaCommonData_${baseCustomer}`) || '{}'); } catch(e) {}
+
+    tbody.innerHTML = tasks.map(task => {
+        if (task.op === 'check_only') {
+            const tTotal = savedData[`${task.id}_합계금액`] || '';
+            const tSupply = savedData[`${task.id}_공급가액`] || '';
+            const tVat = savedData[`${task.id}_부가세`] || '';
+            return `
+            <tr style="background: #fdf5f0; border-bottom: 2px solid #fff;">
+                <td colspan="4" style="padding: 10px 15px; vertical-align: middle;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                        <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400; flex: 1;">
+                            <input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); if(typeof saveCheckState === 'function') saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); margin-right: 10px;">
+                            <span style="white-space: nowrap;">${task.title}</span>
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 10px; flex: 2; justify-content: flex-end;">
+                            <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">공급가액</span><input type="text" id="${task.id}_supply" class="check-input" data-task="${task.id}" data-type="공급가액" value="${tSupply}" oninput="formatMoney(this); RpaCalculator.calculateFromSupply(this, '${task.id}_total', '${task.id}_vat'); if(typeof saveCheckData === 'function') window.saveCheckData('${baseCustomer}')" style="width: 110px; padding: 6px; border: 1px solid #fce4d6; border-radius: 4px; font-weight: bold; text-align: right; background: #fff;"></div>
+                            <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">부가세</span><input type="text" id="${task.id}_vat" class="check-input" data-task="${task.id}" data-type="부가세" value="${tVat}" placeholder="자동계산" readonly style="width: 90px; padding: 6px; border: 1px solid #fadbd8; border-radius: 4px; background: #fffcfb; color: #888; font-weight: bold; text-align: right;"></div>
+                            <div style="display: flex; align-items: center; gap: 5px;"><span style="font-size: 0.85em; color: #a04000; font-weight: bold; white-space: nowrap;">합계금액</span><input type="text" id="${task.id}_total" class="check-input" data-task="${task.id}" data-type="합계금액" value="${tTotal}" placeholder="자동계산" readonly style="width: 110px; padding: 6px; border: 1px solid #fadbd8; border-radius: 4px; background: #fffcfb; color: #888; font-weight: bold; text-align: right;"></div>
+                        </div>
+                    </div>
+                </td>
+            </tr>`;
+        } else if (task.op === 'check_simple') {
+            return `
+            <tr style="background: #fdf5f0; border-bottom: 2px solid #fff;">
+                <td colspan="4" style="padding: 10px 15px; vertical-align: middle;">
+                    <label style="cursor: pointer; display: flex; align-items: center; margin: 0; font-weight: bold; font-size: 1.05em; color: #d35400;">
+                        <input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); if(typeof saveCheckState === 'function') saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); margin-right: 10px;">
+                        <span style="white-space: nowrap;">${task.title}</span>
+                    </label>
+                </td>
+            </tr>`;
+        } else {
+            return `<tr>
+                <td style="padding: 10px 15px; font-weight: bold; font-size: 1.05em; vertical-align: middle;">${task.title}</td>
+                <td style="padding: 10px 15px; vertical-align: middle; text-align: center;">${task.date}</td>
+                <td style="padding: 10px 15px; vertical-align: middle; text-align: center;"><input type="checkbox" data-task-id="${task.id}" ${savedChecks[task.id] ? 'checked' : ''} onchange="updateProgress(${total}); if(typeof saveCheckState === 'function') saveCheckState('${baseCustomer}', '${task.id}', this.checked)" style="transform: scale(1.2); cursor: pointer;"></td>
+                <td style="padding: 10px 15px; vertical-align: middle; text-align: center;"><button class="btn btn-primary" style="font-size: 0.85em; padding: 4px 10px;" onclick="executeTask('${task.id}', '${task.op}')">생성 실행</button></td>
+            </tr>`;
+        }
+    }).join('');
 });
 
 function updateProgress(total) {
@@ -88,26 +120,74 @@ function updateProgress(total) {
     document.getElementById('progressText').innerText = `${checked} / ${total} 완료 (${percent}%)`;
 }
 
+function saveCheckState(baseCustomer, taskId, isChecked) {
+    let checks = {};
+    try { checks = JSON.parse(localStorage.getItem(`rpa_checks_${baseCustomer}`) || '{}'); } catch(e) {}
+    checks[taskId] = isChecked;
+    localStorage.setItem(`rpa_checks_${baseCustomer}`, JSON.stringify(checks));
+}
+
 let currentTaskCustomer = '';
 let currentTaskOperation = '';
 
 function executeTask(customer, operation, overrides = null, isRefreshing = false) {
+    // 💡 안전 장치: UI에서 'koreapost' 로 넘어온 경우 올바른 작업 ID로 매핑
+    if (customer === 'koreapost' && operation.startsWith('kp_task') && operation !== 'kp_task5') {
+        const taskNum = operation.replace('kp_task', '');
+        customer = `koreapost_${taskNum}`;
+    }
+
     if (operation === 'kp_task5') {
         renderCertificateGuideUI();
         return;
+    }
+
+    // 💡 탭 이동 자동 저장: 화면에 입력된 값을 다른 문서 탭을 누르기 직전에 자동 저장(Sync)합니다.
+    if (!isRefreshing && document.getElementById('previewSection') && document.getElementById('previewSection').style.display === 'block') {
+        const inputs = document.querySelectorAll('.edit-input');
+        const tempOverride = {};
+        inputs.forEach(input => {
+            const ignoreVals = ["엑셀 자동 로드", "문서 생성 시 자동 계산", "엑셀파일 연동", "데이터 불러오는 중...", "로드 실패 (생성 시 적용됨)", "로드 실패 (엑셀/양식 확인)"];
+            if (!ignoreVals.includes(input.value)) tempOverride[input.dataset.key] = input.value;
+        });
+        if (currentTaskCustomer) {
+            const bCust = typeof RpaRenderer !== 'undefined' ? RpaRenderer.getBaseCustomer(currentTaskCustomer) : currentTaskCustomer.split('_')[0];
+            let extData = {};
+            try { extData = JSON.parse(localStorage.getItem(`rpaCommonData_${bCust}`) || '{}'); } catch(e) {}
+            
+            if (currentTaskOperation === 'kp_task3') {
+                if (tempOverride['당초청구금액'] !== undefined) tempOverride['당초청구금액_3'] = tempOverride['당초청구금액'];
+                if (tempOverride['정산감액'] !== undefined) tempOverride['정산감액_3'] = tempOverride['정산감액'];
+                if (tempOverride['청구금액'] !== undefined) tempOverride['청구금액_3'] = tempOverride['청구금액'];
+            } else if (currentTaskOperation === 'kp_task4') {
+                if (tempOverride['당초청구금액'] !== undefined) tempOverride['당초청구금액_4'] = tempOverride['당초청구금액'];
+                if (tempOverride['정산감액'] !== undefined) tempOverride['정산감액_4'] = tempOverride['정산감액'];
+                if (tempOverride['청구금액'] !== undefined) tempOverride['청구금액_4'] = tempOverride['청구금액'];
+            } else if (currentTaskCustomer === 'koreapost_1') {
+                if (tempOverride['합계금액'] !== undefined) {
+                    tempOverride['당초청구금액_3'] = tempOverride['합계금액'];
+                    tempOverride['청구금액_3'] = tempOverride['합계금액'];
+                }
+            } else if (currentTaskCustomer === 'koreapost_2') {
+                if (tempOverride['미사용차감금액'] !== undefined) {
+                    tempOverride['정산감액_4'] = tempOverride['미사용차감금액'];
+                }
+            }
+            localStorage.setItem(`rpaCommonData_${bCust}`, JSON.stringify({ ...extData, ...tempOverride }));
+        }
     }
 
     currentTaskCustomer = customer;
     currentTaskOperation = operation;
     showLoading(isRefreshing ? "데이터를 계산하고 화면을 업데이트 중입니다..." : "데이터를 불러오는 중입니다...");
 
-    const optionsObj = { preview_only: (operation === 'doc_official' || operation.startsWith('kp_task')), billing_amount: "", doc_number: "" };
+    const optionsObj = { preview_only: (operation !== 'kp_task_all' && (operation === 'doc_official' || operation.startsWith('kp_task'))), billing_amount: "", doc_number: "" };
     
     if (overrides) {
         optionsObj.context_override = overrides;
     } else {
         let savedData = {};
-        const baseCustomer = customer.split('_')[0];
+        const baseCustomer = typeof RpaRenderer !== 'undefined' ? RpaRenderer.getBaseCustomer(customer) : customer.split('_')[0];
         try {
             const stored = localStorage.getItem(`rpaCommonData_${baseCustomer}`);
             if (stored) {
@@ -129,11 +209,14 @@ function executeTask(customer, operation, overrides = null, isRefreshing = false
         
         if (operation === 'kp_task3') {
             if (savedData['당초청구금액_3']) savedData['당초청구금액'] = savedData['당초청구금액_3'];
+            else if (savedData['합계금액']) savedData['당초청구금액'] = savedData['합계금액'];
             if (savedData['정산감액_3']) savedData['정산감액'] = savedData['정산감액_3'];
             if (savedData['청구금액_3']) savedData['청구금액'] = savedData['청구금액_3'];
+            else if (savedData['합계금액']) savedData['청구금액'] = savedData['합계금액'];
         } else if (operation === 'kp_task4') {
             if (savedData['당초청구금액_4']) savedData['당초청구금액'] = savedData['당초청구금액_4'];
             if (savedData['정산감액_4']) savedData['정산감액'] = savedData['정산감액_4'];
+            else if (savedData['미사용차감금액']) savedData['정산감액'] = savedData['미사용차감금액'];
             if (savedData['청구금액_4']) savedData['청구금액'] = savedData['청구금액_4'];
         }
         optionsObj.context_override = savedData;
@@ -208,7 +291,7 @@ function applyChanges() {
     }
 
     if (currentTaskCustomer) {
-        const baseCustomer = currentTaskCustomer.split('_')[0];
+        const baseCustomer = typeof RpaRenderer !== 'undefined' ? RpaRenderer.getBaseCustomer(currentTaskCustomer) : currentTaskCustomer.split('_')[0];
         let existingData = {};
         try { existingData = JSON.parse(localStorage.getItem(`rpaCommonData_${baseCustomer}`) || '{}'); } catch(e) {}
         
@@ -221,7 +304,22 @@ function applyChanges() {
             if (contextOverride['정산감액'] !== undefined) contextOverride['정산감액_4'] = contextOverride['정산감액'];
             if (contextOverride['청구금액'] !== undefined) contextOverride['청구금액_4'] = contextOverride['청구금액'];
         }
-        localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify({ ...existingData, ...contextOverride }));
+        else if (currentTaskCustomer === 'koreapost_1') {
+            if (contextOverride['합계금액'] !== undefined) {
+                contextOverride['당초청구금액_3'] = contextOverride['합계금액'];
+                contextOverride['청구금액_3'] = contextOverride['합계금액'];
+            }
+        } else if (currentTaskCustomer === 'koreapost_2') {
+            if (contextOverride['미사용차감금액'] !== undefined) {
+                contextOverride['정산감액_4'] = contextOverride['미사용차감금액'];
+            }
+        }
+
+        const dataToStore = { ...existingData, ...contextOverride };
+        delete dataToStore['청구연월'];
+        delete dataToStore['작성일자'];
+
+        localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify(dataToStore));
     }
     executeTask(currentTaskCustomer, currentTaskOperation, contextOverride, true);
 }
@@ -232,7 +330,7 @@ function renderPreviewEditor(context, isRefreshing = false) {
     delete context['모든_변수_확인용'];
     
     let exposedKeys = [];
-    if (currentTaskCustomer === 'koreapost_1') exposedKeys = ['합계금액', '공급가액', '부가세'];
+    if (currentTaskCustomer === 'koreapost_1') exposedKeys = ['합계금액', '공급가액', '부가세', '이전설치내역'];
     else if (currentTaskCustomer === 'koreapost_2') exposedKeys = ['월유지비용', '미사용차감수량', '미사용차감금액', '실지급액', '장애_적기처리건수', '장애_지연처리건수', '만족도조사_건수', '만족도조사_총점', '만족도조사_평점', '정기점검_총대상수', '정기점검_완료수', '정기점검_달성률', '이전설치_총대상수', '이전설치_완료수', '이전설치_달성률'];
     else if (currentTaskOperation === 'kp_task3' || currentTaskOperation === 'kp_task4') exposedKeys = ['당초청구금액', '정산감액', '청구금액', '합계금액', '공급가액', '부가세'];
 
@@ -256,7 +354,10 @@ function renderPreviewEditor(context, isRefreshing = false) {
                     inputHtml = `<input type="text" class="edit-input ${key.includes('달성률')||key.includes('평점')?'':'money-input'}" ${extraId} data-key="${key}" value="${context[key]}" placeholder="자동 계산됨" oninput="${oninputStr}" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; background-color: ${key==='공급가액'?'#fafafa':'#f5f5f5'}; color: ${key==='공급가액'?'inherit':'#888'};" ${key !== '공급가액' ? 'readonly' : ''}>`;
                 } else if (['합계금액', '당초청구금액', '정산감액', '미사용차감수량', '미사용차감금액', '만족도조사_건수', '만족도조사_총점', '정기점검_총대상수', '정기점검_완료수', '이전설치_총대상수', '이전설치_완료수', '장애_적기처리건수', '장애_지연처리건수'].includes(key)) {
                     let oninputStr = key.includes('수') || key.includes('점') ? "" : "formatMoney(this)";
-                    if (key === '합계금액') oninputStr += "; calculateVAT(this);";
+                    if (key === '합계금액') {
+                        oninputStr += "; calculateVAT(this);";
+                        if (currentTaskOperation === 'kp_task3') oninputStr += " const t=document.querySelector('input[data-key=\"당초청구금액\"]'); if(t){t.value=this.value; calculateClaimAmount();}";
+                    }
                     else if (key === '당초청구금액' || key === '정산감액') oninputStr += "; calculateClaimAmount();";
                     else if (key === '미사용차감금액') oninputStr += "; calculateActualPayment();";
                     else if (key.includes('만족도')) oninputStr = "calculateSatisfaction();";
@@ -264,8 +365,14 @@ function renderPreviewEditor(context, isRefreshing = false) {
                     else if (key.includes('이전설치')) oninputStr = "calculateRate('이전설치');";
                     let extraId = key === '합계금액' ? 'id="input_total"' : '';
                     inputHtml = `<input type="${key.includes('수')||key.includes('점')?'number':'text'}" class="edit-input ${key.includes('수')||key.includes('점')?'':'money-input'}" ${extraId} data-key="${key}" value="${context[key]}" oninput="${oninputStr}" style="width: 100%; padding: 10px; border: 2px solid var(--primary); border-radius: 4px; font-weight: bold; background-color: #f4faff;">`;
+                } else if (key === '이전설치내역') {
+                    inputHtml = `<input type="text" class="edit-input" id="dash_relo_detail" data-key="${key}" value="${context[key]}" placeholder="이전설치내역을 입력하세요" style="width: 100%; padding: 10px; border: 2px solid var(--primary); border-radius: 4px; box-sizing: border-box; font-weight: bold; background-color: ${context[key] === '없음' ? '#f5f5f5' : '#f4faff'}; color: ${context[key] === '없음' ? '#888' : ''};" ${context[key] === '없음' ? 'readonly' : ''}>`;
                 }
-                html += `<div style="flex: 1; min-width: 200px;"><label style="font-weight: bold; display: block; margin-bottom: 5px; color: var(--text);">${key}</label>${inputHtml}</div>`;
+                let labelHtml = `<label style="font-weight: bold; display: block; margin-bottom: 5px; color: var(--text);">${key}</label>`;
+                if (key === '이전설치내역') {
+                    labelHtml = `<label style="font-weight: bold; display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; color: var(--text);">${key} <label style="cursor: pointer; font-size: 0.85em; font-weight: normal;"><input type="checkbox" onchange="const inp=document.getElementById('dash_relo_detail'); if(this.checked){inp.value='없음';inp.readOnly=true;inp.style.backgroundColor='#f5f5f5';inp.style.color='#888';}else{inp.value='';inp.readOnly=false;inp.style.backgroundColor='#f4faff';inp.style.color='';}" ${context[key] === '없음' ? 'checked' : ''}> 없음</label></label>`;
+                }
+                html += `<div style="flex: 1; min-width: 200px;">${labelHtml}${inputHtml}</div>`;
             }
         }
         html += `</div>`;
@@ -329,10 +436,6 @@ async function submitFinalDocument() {
         const globalDocNum = document.getElementById('global_doc_num');
         if (globalDocNum) globalDocNum.value = contextOverride['공문번호'];
     }
-    if (contextOverride['공문번호']) {
-        const globalDocNum = document.getElementById('global_doc_num');
-        if (globalDocNum) globalDocNum.value = contextOverride['공문번호'];
-    }
 
     if (currentTaskCustomer) {
         const baseCustomer = currentTaskCustomer.split('_')[0];
@@ -347,7 +450,22 @@ async function submitFinalDocument() {
             if (contextOverride['정산감액'] !== undefined) contextOverride['정산감액_4'] = contextOverride['정산감액'];
             if (contextOverride['청구금액'] !== undefined) contextOverride['청구금액_4'] = contextOverride['청구금액'];
         }
-        localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify({ ...existingData, ...contextOverride }));
+        else if (currentTaskCustomer === 'koreapost_1') {
+            if (contextOverride['합계금액'] !== undefined) {
+                contextOverride['당초청구금액_3'] = contextOverride['합계금액'];
+                contextOverride['청구금액_3'] = contextOverride['합계금액'];
+            }
+        } else if (currentTaskCustomer === 'koreapost_2') {
+            if (contextOverride['미사용차감금액'] !== undefined) {
+                contextOverride['정산감액_4'] = contextOverride['미사용차감금액'];
+            }
+        }
+
+        const dataToStore = { ...existingData, ...contextOverride };
+        delete dataToStore['청구연월'];
+        delete dataToStore['작성일자'];
+
+        localStorage.setItem(`rpaCommonData_${baseCustomer}`, JSON.stringify(dataToStore));
     }
     
     try {
